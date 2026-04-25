@@ -1,0 +1,108 @@
+version: "3.8"
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: exam_mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  logging_gateway:
+    build: ./logging_gateway
+    container_name: logging_gateway
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mongodb
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/
+
+  module_01:
+    build: ./module_01
+    ports: ["5001:5001"]
+    depends_on: [mongodb, logging_gateway]
+
+  module_02:
+    build: ./module_02
+    ports: ["5002:5002"]
+    depends_on: [mongodb, logging_gateway]
+
+  module_03:
+    build: ./module_03
+    ports: ["5003:5003"]
+    depends_on: [mongodb, logging_gateway]
+
+  module_04:
+    build: ./module_04
+    ports: ["5004:5004"]
+    depends_on: [mongodb, logging_gateway]
+
+  module_05:
+    build: ./module_05
+    ports: ["5005:5005"]
+    depends_on: [mongodb, logging_gateway]
+
+  module_06:
+    build: ./module_06
+    ports: ["5006:5006"]
+    depends_on: [mongodb, logging_gateway]
+
+  module_07:
+    build: ./module_07
+    ports: ["5007:5007"]
+    depends_on: [mongodb, logging_gateway]
+
+  module_08:
+    build: ./module_08
+    ports: ["5008:5008"]
+    depends_on: [mongodb, logging_gateway]
+
+  module_09:
+    build: ./module_09
+    ports: ["5009:5009"]
+    depends_on: [mongodb, logging_gateway]
+
+  module_10:
+    build: ./module_10
+    ports: ["5010:5010"]
+    depends_on: [mongodb, logging_gateway]
+
+  module_11:
+    build: ./module_11
+    ports: ["5011:5011"]
+    depends_on: [mongodb, logging_gateway]
+
+  module_12:
+    build: ./module_12
+    ports: ["5012:5012"]
+    depends_on: [mongodb, logging_gateway]
+
+  module_13:
+    build: ./module_13
+    ports: ["5013:5013"]
+    depends_on: [mongodb, logging_gateway]
+
+  module_14:
+    build: ./module_14
+    ports: ["5014:5014"]
+    depends_on: [mongodb, logging_gateway]
+
+  module_15:
+    build: ./module_15
+    ports: ["5015:5015"]
+    depends_on: [mongodb, logging_gateway]
+
+  module_16:
+    build: ./module_16
+    ports: ["5016:5016"]
+    depends_on: [mongodb, logging_gateway]
+
+  module_17:
+    build: ./module_17
+    ports: ["5017:5017"]
+    depends_on: [mongodb, logging_gateway]
+
+volumes:
+  mongo_data:
