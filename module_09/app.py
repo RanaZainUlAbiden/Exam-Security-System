@@ -7,7 +7,6 @@
 
 import sys
 import os
-import datetime
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -42,33 +41,187 @@ def health():
 # POST /api/module09/sanitize
 # =============================================
 
-# EXAMPLE endpoint — replace with your actual implementation
-@app.route("/api/module09/example", methods=["POST"])
-@jwt_required
-def example_endpoint():
-    """
-    Replace this with your actual endpoint.
-    request.user_payload contains JWT data: user_id, role, etc.
-    """
-    user = request.user_payload
-    db   = get_db()
+import sys
+import os
+import re
+from bs4 import BeautifulSoup
 
-    # Log the action
-    send_log(
-        module_name = MODULE_NAME,
-        level       = "INFO",
-        user_id     = user["user_id"],
-        exam_id     = request.json.get("exam_id", ""),
-        action      = "example_action",
-        details     = {"request_data": request.json}
+# =============================================
+# VALIDATION RULES
+# =============================================
+VALIDATION_RULES = {
+    "username": r"^[a-zA-Z0-9_]{3,20}$",
+    "password": r"^.{6,50}$",
+    "email": r"^[^@]+@[^@]+\.[^@]+$",
+    "text": r"^[a-zA-Z0-9\s.,!?@#%&()\-]{1,500}$"
+}
+
+# =============================================
+# STRONG ATTACK DETECTION (FIXED)
+# =============================================
+ATTACK_PATTERNS = [
+    r"\$ne", r"\$gt", r"\$lt", r"\$regex", r"\$where",
+    r"<script.*?>", r"</script>",
+    r"javascript:", r"onerror=", r"onload=",
+    r"union\s+select", r"drop\s+table"
+]
+
+
+def detect_attack(value: str):
+    if not value:
+        return False, None
+
+    value_lower = value.lower()
+
+    for pattern in ATTACK_PATTERNS:
+        if re.search(pattern, value_lower, re.IGNORECASE):
+            return True, pattern
+
+    return False, None
+
+
+# =============================================
+# FIELD VALIDATION
+# =============================================
+def validate_input_field(field, value):
+    pattern = VALIDATION_RULES.get(field)
+
+    if not pattern:
+        return False, "Unknown field type"
+
+    if not re.match(pattern, value):
+        return False, "Invalid format"
+
+    return True, None
+
+
+# =============================================
+# SECURE SANITIZER (FIXED PROPERLY)
+# =============================================
+def sanitize_value(value: str):
+    if not value:
+        return ""
+
+    # 1. Detect obvious script injection BEFORE cleaning
+    if re.search(r"(?i)<\s*script", value):
+        value = re.sub(r"(?i)<\s*/?\s*script\s*>", "", value)
+
+    # 2. Remove HTML tags safely
+    clean = BeautifulSoup(value, "html.parser").get_text()
+
+    # 3. Remove only dangerous injection characters (safe minimal set)
+    clean = re.sub(r"[\$\{\}<>/;:'\"\\]", "", clean)
+
+    # 4. Normalize spaces
+    clean = re.sub(r"\s+", " ", clean)
+
+    return clean.strip()
+
+
+# =============================================
+# ENDPOINT 1 - VALIDATE INPUT
+# =============================================
+@app.route("/api/module09/validate-input", methods=["POST"])
+@jwt_required
+def validate_input_endpoint():
+
+    user = request.user_payload
+    data = request.json or {}
+
+    field = data.get("field", "")
+    value = str(data.get("value", ""))
+    exam_id = data.get("exam_id", "")
+
+    # 🔴 Attack detection
+    is_attack, pattern = detect_attack(value)
+
+    if is_attack:
+        send_log(
+            module_name=MODULE_NAME,
+            level="SECURITY",
+            user_id=user["user_id"],
+            exam_id=exam_id,
+            action="injection_detected",
+            details={"input": value, "pattern": pattern}
+        )
+
+        return error_response(
+            message="Malicious input detected",
+            error_code=400
+        )
+
+    # 🔐 Field validation
+    is_valid, error_msg = validate_input_field(field, value)
+
+    if not is_valid:
+        return error_response(
+            message=error_msg,
+            error_code=400
+        )
+
+    # 🧼 Sanitize
+    clean_value = sanitize_value(value)
+
+    # 📝 Log success (safe fallback)
+    try:
+        send_log(
+            module_name=MODULE_NAME,
+            level="INFO",
+            user_id=user["user_id"],
+            exam_id=exam_id,
+            action="input_validated",
+            details={"field": field}
+        )
+    except:
+        pass
+
+    return success_response(
+        data={
+            "is_valid": True,
+            "sanitized_value": clean_value
+        },
+        message="Input validated successfully"
     )
 
-    # Your logic here
-    result = {}
 
-    return success_response(data=result, message="Action completed")
+# =============================================
+# ENDPOINT 2 - SANITIZE ONLY
+# =============================================
+@app.route("/api/module09/sanitize", methods=["POST"])
+@jwt_required
+def sanitize_endpoint():
+
+    user = request.user_payload
+    data = request.json or {}
+
+    value = str(data.get("value", ""))
+    exam_id = data.get("exam_id", "")
+
+    clean_value = sanitize_value(value)
+
+    try:
+        send_log(
+            module_name=MODULE_NAME,
+            level="INFO",
+            user_id=user["user_id"],
+            exam_id=exam_id,
+            action="input_sanitized",
+            details={"original": value}
+        )
+    except:
+        pass
+
+    return success_response(
+        data={
+            "sanitized_value": clean_value
+        },
+        message="Input sanitized successfully"
+    )
 
 
+# =============================================
+# MAIN
+# =============================================
 if __name__ == "__main__":
-    print(f"🔐 Module 09 — Input Validation running on port {PORT}")
+    print(f"🔐 Module 09 — Secure Input Validation running on port {PORT}")
     app.run(port=PORT, debug=True)
