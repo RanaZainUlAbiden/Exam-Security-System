@@ -1,0 +1,46 @@
+## Module 16 local ignores (in addition to repo root .gitignore)
+
+# Virtual environments (module-local)
+.venv/
+venv/
+env/
+
+# Environment/config secrets (module-local)
+.env
+.env.*
+
+# Python bytecode/caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+nosetests.xml
+test-results.xml
+
+# Type checking / lint / format caches
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.pyre/
+.tox/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local runtime artifacts
+*.log
+logs/
+tmp/
+*.pid
+
+# Editor/OS files (module-local)
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
