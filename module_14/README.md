@@ -54,7 +54,7 @@ Sessions are marked as closed when:
 
 Student logs out (Module 1 calls /close-session)
 Exam is submitted (Module 8 calls /close-session)
-App crashes or internet disconnects → session automatically terminates after 15 minutes of no heartbeat/activity
+App crashes or internet disconnects → session automatically terminates after 10 minutes of no heartbeat/activity
 System timeout thread detects inactive sessions and closes them automatically
 
 ## Setup
