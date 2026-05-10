@@ -6,8 +6,13 @@
 
 from pymongo import MongoClient
 
-MONGO_URI     = "mongodb://localhost:27017/"
-DATABASE_NAME = "exam_security"
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+MONGO_URI     = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+DATABASE_NAME = os.getenv("DATABASE_NAME", "exam_security")
 
 _client = None
 

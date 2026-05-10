@@ -1,33 +1,59 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import StudentDashboard from './pages/StudentDashboard';
 import TeacherDashboard from './pages/TeacherDashboard';
 import ExamPage from './pages/ExamPage';
 
-function PrivateRoute({ children, role }) {
+const PrivateRoute = ({ children, allowedRole }) => {
   const token = localStorage.getItem('token');
-  const userRole = localStorage.getItem('role');
-  if (!token) return <Navigate to="/" />;
-  if (role && userRole !== role) return <Navigate to="/" />;
-  return children;
-}
+  const role = localStorage.getItem('role');
 
-export default function App() {
+  if (!token) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (allowedRole && role !== allowedRole) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+};
+
+function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Login />} />
-        <Route path="/student" element={
-          <PrivateRoute role="student"><StudentDashboard /></PrivateRoute>
-        }/>
-        <Route path="/teacher" element={
-          <PrivateRoute role="teacher"><TeacherDashboard /></PrivateRoute>
-        }/>
-        <Route path="/exam/:examId" element={
-          <PrivateRoute role="student"><ExamPage /></PrivateRoute>
-        }/>
-      </Routes>
-    </BrowserRouter>
+    <Router>
+      <div className="App">
+        <Routes>
+          <Route path="/" element={<Login />} />
+          <Route 
+            path="/student" 
+            element={
+              <PrivateRoute allowedRole="student">
+                <StudentDashboard />
+              </PrivateRoute>
+            } 
+          />
+          <Route 
+            path="/teacher" 
+            element={
+              <PrivateRoute allowedRole="teacher">
+                <TeacherDashboard />
+              </PrivateRoute>
+            } 
+          />
+          <Route 
+            path="/exam/:id" 
+            element={
+              <PrivateRoute allowedRole="student">
+                <ExamPage />
+              </PrivateRoute>
+            } 
+          />
+        </Routes>
+      </div>
+    </Router>
   );
 }
+
+export default App;

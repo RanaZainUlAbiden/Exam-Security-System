@@ -3,135 +3,207 @@ import { useNavigate } from 'react-router-dom';
 import { login, verifyOtp, register, registerDevice } from '../api';
 
 export default function Login() {
-  const nav = useNavigate();
-  const [tab, setTab]         = useState('login');   // login | register
-  const [step, setStep]       = useState(1);          // 1=creds, 2=otp
-  const [form, setForm]       = useState({ username:'', password:'', role:'student' });
-  const [userId, setUserId]   = useState('');
-  const [otpVal, setOtpVal]   = useState('');
-  const [devOtp, setDevOtp]   = useState('');
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg]         = useState({ type:'', text:'' });
+  const [activeTab, setActiveTab] = useState('login'); // 'login' or 'register'
+  const [step, setStep] = useState(1); // 1 = Creds, 2 = OTP
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  
+  // Form State
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState('student');
+  const [otp, setOtp] = useState('');
+  const [userId, setUserId] = useState(null);
 
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const navigate = useNavigate();
 
-  const handleLogin = async () => {
-    if (!form.username || !form.password) return setMsg({ type:'error', text:'Fill all fields' });
-    setLoading(true); setMsg({ type:'', text:'' });
-    const res = await login(form.username, form.password);
-    setLoading(false);
-    if (res.status === 'success') {
+  const handleLoginSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setIsLoading(true);
+    try {
+      const res = await login(username, password);
       setUserId(res.data.user_id);
-      setDevOtp(res.data.otp); // dev only
       setStep(2);
-      setMsg({ type:'success', text:'OTP sent! (shown below for dev testing)' });
-    } else {
-      setMsg({ type:'error', text: res.message || 'Login failed' });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleOtp = async () => {
-    if (!otpVal) return setMsg({ type:'error', text:'Enter OTP' });
-    setLoading(true);
-    const res = await verifyOtp(userId, otpVal);
-    setLoading(false);
-    if (res.status === 'success') {
-      const { token, role, username, user_id } = res.data;
+  const handleOtpSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setIsLoading(true);
+    try {
+      const res = await verifyOtp(userId, otp);
+      const { token, role: userRole, username: resUsername, user_id } = res.data;
+      
       localStorage.setItem('token', token);
-      localStorage.setItem('role', role);
-      localStorage.setItem('username', username);
+      localStorage.setItem('role', userRole);
+      localStorage.setItem('username', resUsername);
       localStorage.setItem('user_id', user_id);
-      await registerDevice();
-      nav(role === 'teacher' ? '/teacher' : '/student');
-    } else {
-      setMsg({ type:'error', text: res.message || 'Invalid OTP' });
+
+      // Register device automatically
+      try {
+        await registerDevice();
+      } catch (err) {
+        console.warn('Device registration failed:', err.message);
+      }
+
+      if (userRole === 'teacher') navigate('/teacher');
+      else navigate('/student');
+      
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleRegister = async () => {
-    if (!form.username || !form.password) return setMsg({ type:'error', text:'Fill all fields' });
-    setLoading(true);
-    const res = await register(form.username, form.password, form.role);
-    setLoading(false);
-    if (res.status === 'success') {
-      setMsg({ type:'success', text:'Registered! Now login.' });
-      setTab('login');
-    } else {
-      setMsg({ type:'error', text: res.message || 'Registration failed' });
+  const handleRegisterSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    setIsLoading(true);
+    try {
+      await register(username, password, role);
+      setSuccess('Registration successful! You can now login.');
+      setActiveTab('login');
+      setStep(1);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="login-page">
-      <div className="login-box">
-        <div className="login-logo">
-          <h1>🔐 SecureExam</h1>
-          <p>Secure Online Examination System</p>
+    <div className="login-wrapper">
+      <div className="card login-card">
+        <div className="login-header">
+          <div className="login-icon">🔒</div>
+          <h2>Secure Portal</h2>
         </div>
 
-        <div className="login-tabs">
-          <button className={`tab-btn ${tab==='login'?'active':''}`} onClick={()=>{setTab('login');setStep(1);setMsg({type:'',text:''})}}>Login</button>
-          <button className={`tab-btn ${tab==='register'?'active':''}`} onClick={()=>{setTab('register');setMsg({type:'',text:''})}}>Register</button>
-        </div>
-
-        {msg.text && <div className={`alert alert-${msg.type}`}>{msg.text}</div>}
-
-        {tab === 'login' && step === 1 && (
-          <>
-            <div className="form-group">
-              <label>Username</label>
-              <input value={form.username} onChange={e=>set('username',e.target.value)} placeholder="Enter username" />
-            </div>
-            <div className="form-group">
-              <label>Password</label>
-              <input type="password" value={form.password} onChange={e=>set('password',e.target.value)} placeholder="Enter password" />
-            </div>
-            <button className="btn btn-primary btn-full" onClick={handleLogin} disabled={loading}>
-              {loading ? 'Logging in...' : 'Login'}
-            </button>
-          </>
+        {error && (
+          <div className="alert alert-error">
+            <span>⚠️</span> {error}
+          </div>
+        )}
+        
+        {success && (
+          <div className="alert alert-success">
+            <span>✅</span> {success}
+          </div>
         )}
 
-        {tab === 'login' && step === 2 && (
+        {step === 1 ? (
           <>
-            {devOtp && (
-              <div className="alert alert-warning">
-                <b>Dev Mode OTP:</b> <span style={{letterSpacing:'4px',fontWeight:'700'}}>{devOtp}</span>
+            <div className="tabs">
+              <div 
+                className={`tab ${activeTab === 'login' ? 'active' : ''}`}
+                onClick={() => { setActiveTab('login'); setError(''); setSuccess(''); }}
+              >
+                Login
               </div>
-            )}
-            <div className="form-group">
-              <label>Enter OTP</label>
-              <input className="otp-input" maxLength={6} value={otpVal}
-                onChange={e=>setOtpVal(e.target.value)} placeholder="------" />
+              <div 
+                className={`tab ${activeTab === 'register' ? 'active' : ''}`}
+                onClick={() => { setActiveTab('register'); setError(''); setSuccess(''); }}
+              >
+                Register
+              </div>
             </div>
-            <button className="btn btn-primary btn-full" onClick={handleOtp} disabled={loading}>
-              {loading ? 'Verifying...' : 'Verify OTP'}
-            </button>
-            <button className="btn btn-outline btn-full" style={{marginTop:'10px'}} onClick={()=>setStep(1)}>Back</button>
-          </>
-        )}
 
-        {tab === 'register' && (
-          <>
-            <div className="form-group">
-              <label>Username</label>
-              <input value={form.username} onChange={e=>set('username',e.target.value)} placeholder="Choose username" />
-            </div>
-            <div className="form-group">
-              <label>Password</label>
-              <input type="password" value={form.password} onChange={e=>set('password',e.target.value)} placeholder="Choose password" />
-            </div>
-            <div className="form-group">
-              <label>Role</label>
-              <select value={form.role} onChange={e=>set('role',e.target.value)}>
-                <option value="student">Student</option>
-                <option value="teacher">Teacher</option>
-              </select>
-            </div>
-            <button className="btn btn-primary btn-full" onClick={handleRegister} disabled={loading}>
-              {loading ? 'Registering...' : 'Create Account'}
-            </button>
+            {activeTab === 'login' ? (
+              <form onSubmit={handleLoginSubmit}>
+                <div className="form-group">
+                  <label>Username</label>
+                  <input 
+                    type="text" 
+                    value={username} 
+                    onChange={e => setUsername(e.target.value)} 
+                    required 
+                    placeholder="Enter username"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Password</label>
+                  <input 
+                    type="password" 
+                    value={password} 
+                    onChange={e => setPassword(e.target.value)} 
+                    required 
+                    placeholder="Enter password"
+                  />
+                </div>
+                <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={isLoading}>
+                  {isLoading ? <><span className="spinner"></span> Authenticating...</> : 'Login'}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleRegisterSubmit}>
+                <div className="form-group">
+                  <label>Role</label>
+                  <select value={role} onChange={e => setRole(e.target.value)} required>
+                    <option value="student">Student</option>
+                    <option value="teacher">Teacher</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Username</label>
+                  <input 
+                    type="text" 
+                    value={username} 
+                    onChange={e => setUsername(e.target.value)} 
+                    required 
+                    placeholder="Choose a username"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Password</label>
+                  <input 
+                    type="password" 
+                    value={password} 
+                    onChange={e => setPassword(e.target.value)} 
+                    required 
+                    placeholder="Choose a strong password"
+                  />
+                </div>
+                <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={isLoading}>
+                  {isLoading ? <><span className="spinner"></span> Registering...</> : 'Create Account'}
+                </button>
+              </form>
+            )}
           </>
+        ) : (
+          <form onSubmit={handleOtpSubmit}>
+            <div className="alert alert-warning">
+              <span>💻</span> Check the server terminal for your OTP.
+            </div>
+            <div className="form-group">
+              <label>One-Time Password (OTP)</label>
+              <input 
+                type="text" 
+                className="monospace-input"
+                value={otp} 
+                onChange={e => setOtp(e.target.value)} 
+                required 
+                maxLength={6}
+                placeholder="------"
+              />
+            </div>
+            <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={isLoading}>
+              {isLoading ? <><span className="spinner"></span> Verifying...</> : 'Verify & Proceed'}
+            </button>
+            <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+              <button type="button" className="btn btn-outline" style={{ border: 'none' }} onClick={() => setStep(1)}>
+                Cancel
+              </button>
+            </div>
+          </form>
         )}
       </div>
     </div>

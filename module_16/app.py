@@ -33,6 +33,11 @@ from shared.response_helper import success_response, error_response
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+
 app = Flask(__name__)
 
 MODULE_NAME          = "Module_16_Answer_Similarity"

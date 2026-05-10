@@ -3,86 +3,112 @@ import { useNavigate } from 'react-router-dom';
 import { validateCode } from '../api';
 
 export default function StudentDashboard() {
-  const nav      = useNavigate();
-  const username = localStorage.getItem('username');
-  const [examId, setExamId]   = useState('');
-  const [code, setCode]       = useState('');
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg]         = useState({ type:'', text:'' });
+  const [examId, setExamId] = useState('');
+  const [code, setCode] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const navigate = useNavigate();
 
-  const logout = () => { localStorage.clear(); nav('/'); };
+  const username = localStorage.getItem('username') || 'Student';
 
-  const handleJoinExam = async () => {
-    if (!examId || !code) return setMsg({ type:'error', text:'Enter Exam ID and activation code' });
-    setLoading(true); setMsg({ type:'', text:'' });
-    const res = await validateCode(code.toUpperCase(), examId);
-    setLoading(false);
-    if (res.status === 'success') {
-      setMsg({ type:'success', text:'Code accepted! Redirecting to exam...' });
-      setTimeout(() => nav(`/exam/${examId}`), 1200);
-    } else {
-      setMsg({ type:'error', text: res.message || 'Invalid code' });
+  const handleLogout = () => {
+    localStorage.clear();
+    navigate('/');
+  };
+
+  const handleJoinExam = async (e) => {
+    e.preventDefault();
+    setError('');
+    setIsLoading(true);
+    try {
+      await validateCode(code.toUpperCase(), examId);
+      // On success, go to exam page
+      navigate(`/exam/${examId}`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="page">
+    <div>
       <nav className="navbar">
-        <h2>🔐 SecureExam — Student Portal</h2>
-        <div className="nav-right">
-          <span>👋 {username}</span>
-          <button className="btn-logout" onClick={logout}>Logout</button>
+        <h1>Student Portal</h1>
+        <div className="nav-actions">
+          <span>Welcome, {username}</span>
+          <button className="btn btn-outline" style={{ color: 'white', borderColor: 'white' }} onClick={handleLogout}>Logout</button>
         </div>
       </nav>
 
       <div className="container">
-        <div className="grid-3" style={{marginBottom:'24px'}}>
-          <div className="stat-card">
-            <div className="stat-number">🎓</div>
-            <div className="stat-label">Student Account</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-number">🔒</div>
-            <div className="stat-label">Device Bound</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-number">✅</div>
-            <div className="stat-label">Session Active</div>
-          </div>
-        </div>
+        <div className="grid-2">
+          
+          <div>
+            <div className="card" style={{ marginBottom: '2rem' }}>
+              <h2 className="card-title">👋 Welcome Back, {username}!</h2>
+              <p style={{ color: 'var(--text-light)' }}>
+                Your device has been securely registered with our monitoring system. You are ready to take your exams.
+              </p>
+            </div>
 
-        <div className="card" style={{maxWidth:'500px', margin:'0 auto'}}>
-          <p className="card-title">Join Exam</p>
-
-          {msg.text && <div className={`alert alert-${msg.type}`}>{msg.text}</div>}
-
-          <div className="form-group">
-            <label>Exam ID</label>
-            <input value={examId} onChange={e=>setExamId(e.target.value)}
-              placeholder="e.g. exam001" />
+            <div className="card">
+              <h2 className="card-title">📋 Exam Rules & Instructions</h2>
+              <ul style={{ paddingLeft: '1.5rem', color: 'var(--text-dark)' }}>
+                <li style={{ marginBottom: '0.5rem' }}>Ensure you have a stable internet connection before starting.</li>
+                <li style={{ marginBottom: '0.5rem' }}>Do <strong>NOT</strong> switch tabs or minimize the browser during the exam.</li>
+                <li style={{ marginBottom: '0.5rem' }}>Copying, pasting, and cutting text is strictly prohibited.</li>
+                <li style={{ marginBottom: '0.5rem' }}>Right-clicking is disabled.</li>
+                <li style={{ marginBottom: '0.5rem' }}>Your session will automatically submit when the timer hits zero.</li>
+                <li style={{ color: 'var(--danger)' }}>Violations of these rules will result in an immediate HIGH risk flag.</li>
+              </ul>
+            </div>
           </div>
 
-          <div className="form-group">
-            <label>Activation Code (from teacher)</label>
-            <input value={code} onChange={e=>setCode(e.target.value.toUpperCase())}
-              placeholder="e.g. A3K9XZ2B" maxLength={8}
-              style={{textTransform:'uppercase', letterSpacing:'4px', fontWeight:'700', fontSize:'1.1rem'}} />
+          <div>
+            <div className="card" style={{ borderTop: '4px solid var(--primary)' }}>
+              <h2 className="card-title">🚀 Join Exam</h2>
+              {error && (
+                <div className="alert alert-error">
+                  <span>⚠️</span> {error}
+                </div>
+              )}
+              
+              <form onSubmit={handleJoinExam}>
+                <div className="form-group">
+                  <label>Exam ID</label>
+                  <input 
+                    type="text" 
+                    value={examId} 
+                    onChange={e => setExamId(e.target.value)} 
+                    placeholder="e.g., CS101_MID"
+                    required 
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label>Activation Code</label>
+                  <input 
+                    type="text" 
+                    className="monospace-input"
+                    value={code} 
+                    onChange={e => setCode(e.target.value.toUpperCase())} 
+                    placeholder="XXXX-XXXX"
+                    maxLength={10}
+                    required 
+                  />
+                  <small style={{ color: 'var(--text-light)', display: 'block', marginTop: '0.5rem' }}>
+                    Ask your teacher for the one-time activation code.
+                  </small>
+                </div>
+
+                <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }} disabled={isLoading}>
+                  {isLoading ? <><span className="spinner"></span> Validating...</> : 'Start Exam'}
+                </button>
+              </form>
+            </div>
           </div>
 
-          <button className="btn btn-primary btn-full" onClick={handleJoinExam} disabled={loading}>
-            {loading ? 'Verifying Code...' : '🚀 Start Exam'}
-          </button>
-        </div>
-
-        <div className="card" style={{maxWidth:'500px', margin:'24px auto 0'}}>
-          <p className="card-title">📋 Instructions</p>
-          <ul style={{paddingLeft:'20px', lineHeight:'2', color:'#555', fontSize:'0.9rem'}}>
-            <li>Get your activation code from teacher before exam</li>
-            <li>Do not switch tabs during exam — monitored</li>
-            <li>Do not copy/paste — monitored</li>
-            <li>Timer runs on server — cannot be manipulated</li>
-            <li>Submit before time runs out</li>
-          </ul>
         </div>
       </div>
     </div>

@@ -10,6 +10,9 @@ import os
 import datetime
 import random
 import string
+from dotenv import load_dotenv
+
+load_dotenv()
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -19,7 +22,7 @@ from flask import Flask, request, jsonify
 from shared.db_config import get_db
 from shared.logging_helper import send_log
 from shared.response_helper import success_response, error_response
-from shared.jwt_helper import jwt_required, JWT_SECRET, JWT_ALGORITHM
+from shared.jwt_helper import jwt_required, role_required, JWT_SECRET, JWT_ALGORITHM
 
 app = Flask(__name__)
 
@@ -139,12 +142,12 @@ def login():
     send_log(MODULE_NAME, "INFO", str(user["_id"]), "", "login_otp_sent",
              {"username": data["username"]})
 
+    print(f"[DEV OTP] User: {data['username']} | OTP: {otp}")
+
     # In real system: send OTP via email/SMS
-    # For dev/testing: return OTP in response
     return success_response(
         data    = {
             "user_id":  str(user["_id"]),
-            "otp":      otp,   # REMOVE THIS IN PRODUCTION
             "message":  "OTP sent. Use /verify-otp to get JWT token."
         },
         message = "OTP generated. Verify to complete login."
@@ -245,6 +248,7 @@ def get_exam_state(exam_id):
 
 @app.route("/api/exam/state/<exam_id>", methods=["POST"])
 @jwt_required
+@role_required(["teacher"])
 def update_exam_state(exam_id):
     data = request.get_json()
 

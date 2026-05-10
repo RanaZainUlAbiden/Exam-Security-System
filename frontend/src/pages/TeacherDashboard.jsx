@@ -1,256 +1,355 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createExam, addQuestions, releaseQuestions, generateCode, getExamStatus, getRiskDashboard } from '../api';
+import { 
+  createExam, 
+  addQuestions, 
+  releaseQuestions, 
+  generateCode, 
+  getExamStatus, 
+  getRiskDashboard 
+} from '../api';
 
 export default function TeacherDashboard() {
-  const nav      = useNavigate();
-  const username = localStorage.getItem('username');
-  const [activeTab, setActiveTab] = useState('create');
-  const [loading, setLoading]     = useState(false);
-  const [msg, setMsg]             = useState({ type:'', text:'' });
+  const [activeTab, setActiveTab] = useState(1);
+  const username = localStorage.getItem('username') || 'Teacher';
+  const navigate = useNavigate();
 
-  // Create Exam State
-  const [examForm, setExamForm] = useState({ exam_id:'', title:'', duration:60 });
-  const [examCreated, setExamCreated] = useState(false);
-
-  // Add Questions State
-  const [qExamId, setQExamId]   = useState('');
-  const [questions, setQuestions] = useState([{ question_text:'', marks:1 }]);
-
-  // Activation Code State
-  const [codeExamId, setCodeExamId] = useState('');
-  const [generatedCode, setGeneratedCode] = useState(null);
-
-  // Monitor State
-  const [monExamId, setMonExamId]   = useState('');
-  const [monitorData, setMonitorData] = useState(null);
-  const [riskData, setRiskData]     = useState(null);
-
-  const logout = () => { localStorage.clear(); nav('/'); };
-  const setE = (k,v) => setExamForm(f=>({...f,[k]:v}));
-
-  const handleCreateExam = async () => {
-    if (!examForm.exam_id || !examForm.title) return setMsg({type:'error',text:'Fill all fields'});
-    setLoading(true); setMsg({type:'',text:''});
-    const res = await createExam(examForm.exam_id, examForm.title, parseInt(examForm.duration));
-    setLoading(false);
-    if (res.status === 'success') {
-      setExamCreated(true);
-      setMsg({type:'success', text:`Exam "${examForm.title}" created!`});
-    } else {
-      setMsg({type:'error', text: res.message});
-    }
+  const handleLogout = () => {
+    localStorage.clear();
+    navigate('/');
   };
-
-  const addQRow = () => setQuestions(q => [...q, {question_text:'', marks:1}]);
-  const setQ = (i,k,v) => setQuestions(q => q.map((item,idx) => idx===i ? {...item,[k]:v} : item));
-
-  const handleAddQuestions = async () => {
-    if (!qExamId) return setMsg({type:'error',text:'Enter Exam ID'});
-    const valid = questions.filter(q => q.question_text.trim());
-    if (!valid.length) return setMsg({type:'error',text:'Add at least 1 question'});
-    setLoading(true); setMsg({type:'',text:''});
-    const r1 = await addQuestions(qExamId, valid);
-    if (r1.status === 'success') {
-      const r2 = await releaseQuestions(qExamId);
-      setMsg({type:'success', text:`${valid.length} questions added & released!`});
-    } else {
-      setMsg({type:'error', text: r1.message});
-    }
-    setLoading(false);
-  };
-
-  const handleGenCode = async () => {
-    if (!codeExamId) return setMsg({type:'error',text:'Enter Exam ID'});
-    setLoading(true); setMsg({type:'',text:''});
-    const res = await generateCode(codeExamId);
-    setLoading(false);
-    if (res.status === 'success') {
-      setGeneratedCode(res.data);
-      setMsg({type:'success', text:'Activation code generated!'});
-    } else {
-      setMsg({type:'error', text: res.message});
-    }
-  };
-
-  const handleMonitor = async () => {
-    if (!monExamId) return setMsg({type:'error',text:'Enter Exam ID'});
-    setLoading(true); setMsg({type:'',text:''});
-    const [status, risk] = await Promise.all([
-      getExamStatus(monExamId),
-      getRiskDashboard(monExamId)
-    ]);
-    setLoading(false);
-    if (status.status === 'success') setMonitorData(status.data);
-    if (risk.status === 'success') setRiskData(risk.data);
-  };
-
-  const tabs = [
-    { id:'create',   label:'📝 Create Exam' },
-    { id:'questions',label:'❓ Add Questions' },
-    { id:'codes',    label:'🔑 Activation Codes' },
-    { id:'monitor',  label:'📊 Monitor' },
-  ];
 
   return (
-    <div className="page">
+    <div>
       <nav className="navbar">
-        <h2>🔐 SecureExam — Teacher Portal</h2>
-        <div className="nav-right">
-          <span>👨‍🏫 {username}</span>
-          <button className="btn-logout" onClick={logout}>Logout</button>
+        <h1>Teacher Portal</h1>
+        <div className="nav-actions">
+          <span>Instructor: {username}</span>
+          <button className="btn btn-outline" style={{ color: 'white', borderColor: 'white' }} onClick={handleLogout}>Logout</button>
         </div>
       </nav>
 
       <div className="container">
-        {/* Tab Nav */}
-        <div style={{display:'flex', gap:'10px', marginBottom:'24px', flexWrap:'wrap'}}>
-          {tabs.map(t => (
-            <button key={t.id} className={`btn ${activeTab===t.id?'btn-primary':'btn-outline'}`}
-              onClick={()=>{setActiveTab(t.id); setMsg({type:'',text:''});}}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {msg.text && <div className={`alert alert-${msg.type}`}>{msg.text}</div>}
-
-        {/* CREATE EXAM */}
-        {activeTab === 'create' && (
-          <div className="card" style={{maxWidth:'550px'}}>
-            <p className="section-title">Create New Exam</p>
-            <div className="form-group"><label>Exam ID</label>
-              <input value={examForm.exam_id} onChange={e=>setE('exam_id',e.target.value)} placeholder="e.g. exam001" />
-            </div>
-            <div className="form-group"><label>Exam Title</label>
-              <input value={examForm.title} onChange={e=>setE('title',e.target.value)} placeholder="e.g. Mid Term CS101" />
-            </div>
-            <div className="form-group"><label>Duration (minutes)</label>
-              <input type="number" value={examForm.duration} onChange={e=>setE('duration',e.target.value)} min={5} max={300} />
-            </div>
-            <button className="btn btn-primary" onClick={handleCreateExam} disabled={loading}>
-              {loading ? 'Creating...' : 'Create Exam'}
-            </button>
-          </div>
-        )}
-
-        {/* ADD QUESTIONS */}
-        {activeTab === 'questions' && (
-          <div className="card">
-            <p className="section-title">Add Questions</p>
-            <div className="form-group" style={{maxWidth:'300px'}}>
-              <label>Exam ID</label>
-              <input value={qExamId} onChange={e=>setQExamId(e.target.value)} placeholder="e.g. exam001" />
-            </div>
-            {questions.map((q, i) => (
-              <div key={i} className="question-card">
-                <div className="question-num">Question {i+1}</div>
-                <div className="form-group">
-                  <label>Question Text</label>
-                  <textarea className="answer-textarea" value={q.question_text}
-                    onChange={e=>setQ(i,'question_text',e.target.value)}
-                    placeholder="Enter question..." />
-                </div>
-                <div className="form-group" style={{width:'100px'}}>
-                  <label>Marks</label>
-                  <input type="number" value={q.marks} onChange={e=>setQ(i,'marks',parseInt(e.target.value))} min={1} />
-                </div>
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="tabs" style={{ marginBottom: 0, background: '#f9fafb', padding: '0 1rem' }}>
+            {['Create Exam', 'Manage Questions', 'Activation Codes', 'Monitor & Risk'].map((tab, idx) => (
+              <div 
+                key={idx}
+                className={`tab ${activeTab === idx + 1 ? 'active' : ''}`}
+                onClick={() => setActiveTab(idx + 1)}
+              >
+                {tab}
               </div>
             ))}
-            <div style={{display:'flex', gap:'10px'}}>
-              <button className="btn btn-outline" onClick={addQRow}>+ Add Question</button>
-              <button className="btn btn-primary" onClick={handleAddQuestions} disabled={loading}>
-                {loading ? 'Saving...' : '💾 Save & Release'}
-              </button>
-            </div>
           </div>
-        )}
-
-        {/* ACTIVATION CODES */}
-        {activeTab === 'codes' && (
-          <div className="card" style={{maxWidth:'500px'}}>
-            <p className="section-title">Generate Activation Code</p>
-            <div className="form-group">
-              <label>Exam ID</label>
-              <input value={codeExamId} onChange={e=>setCodeExamId(e.target.value)} placeholder="e.g. exam001" />
-            </div>
-            <button className="btn btn-primary" onClick={handleGenCode} disabled={loading}>
-              {loading ? 'Generating...' : '🔑 Generate Code'}
-            </button>
-
-            {generatedCode && (
-              <div className="code-display" style={{marginTop:'20px'}}>
-                <div style={{fontSize:'0.85rem', color:'#555', marginBottom:'8px'}}>Share this code with student:</div>
-                <div className="code-text">{generatedCode.code}</div>
-                <div className="code-expiry">⏱ Expires in {generatedCode.expires_in_minutes} minutes</div>
-                <div className="code-expiry">Exam: {generatedCode.exam_id}</div>
-              </div>
-            )}
+          <div style={{ padding: '2rem' }}>
+            {activeTab === 1 && <TabCreateExam />}
+            {activeTab === 2 && <TabAddQuestions />}
+            {activeTab === 3 && <TabActivationCodes />}
+            {activeTab === 4 && <TabMonitorRisk />}
           </div>
-        )}
-
-        {/* MONITOR */}
-        {activeTab === 'monitor' && (
-          <div>
-            <div style={{display:'flex', gap:'10px', marginBottom:'20px', alignItems:'flex-end'}}>
-              <div className="form-group" style={{marginBottom:0, width:'220px'}}>
-                <label>Exam ID</label>
-                <input value={monExamId} onChange={e=>setMonExamId(e.target.value)} placeholder="e.g. exam001" />
-              </div>
-              <button className="btn btn-primary" onClick={handleMonitor} disabled={loading}>
-                {loading ? 'Loading...' : '🔍 Load Data'}
-              </button>
-            </div>
-
-            {monitorData && (
-              <div className="grid-2" style={{marginBottom:'20px'}}>
-                <div className="card">
-                  <p className="section-title">📊 Exam Status</p>
-                  <div className="grid-3">
-                    <div className="stat-card"><div className="stat-number">{monitorData.summary?.total_students||0}</div><div className="stat-label">Total</div></div>
-                    <div className="stat-card"><div className="stat-number">{monitorData.summary?.submitted||0}</div><div className="stat-label">Submitted</div></div>
-                    <div className="stat-card"><div className="stat-number">{monitorData.summary?.active||0}</div><div className="stat-label">Active</div></div>
-                  </div>
-                </div>
-                {riskData && (
-                  <div className="card">
-                    <p className="section-title">⚠️ Risk Summary</p>
-                    <div className="grid-3">
-                      <div className="stat-card"><div className="stat-number" style={{color:'#e74c3c'}}>{riskData.summary?.high||0}</div><div className="stat-label">High Risk</div></div>
-                      <div className="stat-card"><div className="stat-number" style={{color:'#f39c12'}}>{riskData.summary?.medium||0}</div><div className="stat-label">Medium</div></div>
-                      <div className="stat-card"><div className="stat-number" style={{color:'#2e8b57'}}>{riskData.summary?.low||0}</div><div className="stat-label">Low</div></div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {riskData?.students?.length > 0 && (
-              <div className="card">
-                <p className="section-title">🏆 Risk Scores — All Students</p>
-                <table className="table">
-                  <thead><tr>
-                    <th>Student ID</th><th>Risk Score</th><th>Level</th>
-                    <th>Tab Switches</th><th>Similarity</th><th>Idle (s)</th>
-                  </tr></thead>
-                  <tbody>
-                    {riskData.students.map((s,i) => (
-                      <tr key={i}>
-                        <td>{s.user_id}</td>
-                        <td><b>{s.score}%</b></td>
-                        <td><span className={`badge badge-${s.level?.toLowerCase()}`}>{s.level}</span></td>
-                        <td>{s.breakdown?.tab_switches||0}</td>
-                        <td>{s.breakdown?.similarity_score||0}</td>
-                        <td>{s.breakdown?.idle_time_sec||0}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
+        </div>
       </div>
+    </div>
+  );
+}
+
+// ================= TAB 1: CREATE EXAM =================
+function TabCreateExam() {
+  const [examId, setExamId] = useState('');
+  const [title, setTitle] = useState('');
+  const [duration, setDuration] = useState('');
+  const [status, setStatus] = useState({ type: '', msg: '' });
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setStatus({ type: '', msg: '' });
+    try {
+      await createExam(examId, title, duration);
+      setStatus({ type: 'success', msg: `Exam ${examId} created successfully!` });
+      setExamId(''); setTitle(''); setDuration('');
+    } catch (err) {
+      setStatus({ type: 'error', msg: err.message });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+      <h2 className="card-title">Create New Exam</h2>
+      {status.msg && (
+        <div className={`alert alert-${status.type}`}>
+          {status.type === 'success' ? '✅' : '⚠️'} {status.msg}
+        </div>
+      )}
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label>Exam ID (Unique)</label>
+          <input type="text" value={examId} onChange={e => setExamId(e.target.value)} required />
+        </div>
+        <div className="form-group">
+          <label>Exam Title</label>
+          <input type="text" value={title} onChange={e => setTitle(e.target.value)} required />
+        </div>
+        <div className="form-group">
+          <label>Duration (Minutes)</label>
+          <input type="number" min="1" value={duration} onChange={e => setDuration(e.target.value)} required />
+        </div>
+        <button type="submit" className="btn btn-primary" disabled={isLoading}>
+          {isLoading ? <><span className="spinner"></span> Creating...</> : 'Create Exam'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+// ================= TAB 2: ADD QUESTIONS =================
+function TabAddQuestions() {
+  const [examId, setExamId] = useState('');
+  const [questions, setQuestions] = useState([{ question_text: '', marks: 1 }]);
+  const [status, setStatus] = useState({ type: '', msg: '' });
+  const [isLoading, setIsLoading] = useState(false);
+
+  const addQ = () => setQuestions([...questions, { question_text: '', marks: 1 }]);
+  const removeQ = (idx) => setQuestions(questions.filter((_, i) => i !== idx));
+  const updateQ = (idx, field, val) => {
+    const newQ = [...questions];
+    newQ[idx][field] = val;
+    setQuestions(newQ);
+  };
+
+  const handleSaveAndRelease = async () => {
+    if (!examId) return setStatus({ type: 'error', msg: 'Exam ID is required' });
+    if (questions.some(q => !q.question_text)) return setStatus({ type: 'error', msg: 'All questions must have text' });
+    
+    setIsLoading(true);
+    setStatus({ type: '', msg: '' });
+    try {
+      await addQuestions(examId, questions);
+      await releaseQuestions(examId);
+      setStatus({ type: 'success', msg: `${questions.length} questions added and released!` });
+      setQuestions([{ question_text: '', marks: 1 }]);
+    } catch (err) {
+      setStatus({ type: 'error', msg: err.message });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      <h2 className="card-title">Add & Release Questions</h2>
+      {status.msg && (
+        <div className={`alert alert-${status.type}`}>
+          {status.type === 'success' ? '✅' : '⚠️'} {status.msg}
+        </div>
+      )}
+      
+      <div className="form-group" style={{ maxWidth: '400px' }}>
+        <label>Target Exam ID</label>
+        <input type="text" value={examId} onChange={e => setExamId(e.target.value)} />
+      </div>
+
+      {questions.map((q, idx) => (
+        <div key={idx} style={{ background: '#f9fafb', padding: '1.5rem', borderRadius: '8px', marginBottom: '1rem', border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+            <strong>Question {idx + 1}</strong>
+            {questions.length > 1 && (
+              <button className="btn btn-outline" style={{ padding: '0.25rem 0.75rem', borderColor: 'var(--danger)', color: 'var(--danger)' }} onClick={() => removeQ(idx)}>Remove</button>
+            )}
+          </div>
+          <div className="form-group">
+            <textarea rows="3" placeholder="Enter question text..." value={q.question_text} onChange={e => updateQ(idx, 'question_text', e.target.value)}></textarea>
+          </div>
+          <div className="form-group" style={{ maxWidth: '150px' }}>
+            <label>Marks</label>
+            <input type="number" min="1" value={q.marks} onChange={e => updateQ(idx, 'marks', parseInt(e.target.value) || 1)} />
+          </div>
+        </div>
+      ))}
+
+      <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+        <button className="btn btn-outline" onClick={addQ}>+ Add Another Question</button>
+        <button className="btn btn-primary" onClick={handleSaveAndRelease} disabled={isLoading}>
+          {isLoading ? <><span className="spinner"></span> Saving...</> : 'Save & Release All'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ================= TAB 3: ACTIVATION CODES =================
+function TabActivationCodes() {
+  const [examId, setExamId] = useState('');
+  const [codes, setCodes] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleGenerate = async () => {
+    if (!examId) return setError('Exam ID is required');
+    setError('');
+    setIsLoading(true);
+    try {
+      const res = await generateCode(examId);
+      setCodes([res.data, ...codes]);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    alert('Code copied to clipboard!');
+  };
+
+  return (
+    <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+      <h2 className="card-title">Generate Activation Codes</h2>
+      <p style={{ color: 'var(--text-light)', marginBottom: '1.5rem' }}>
+        Generate secure, one-time use codes for students to enter the exam. Codes expire in 10 minutes.
+      </p>
+
+      {error && <div className="alert alert-error">⚠️ {error}</div>}
+
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
+        <input style={{ flex: 1 }} type="text" placeholder="Exam ID" value={examId} onChange={e => setExamId(e.target.value)} />
+        <button className="btn btn-primary" onClick={handleGenerate} disabled={isLoading}>
+          {isLoading ? 'Generating...' : 'Generate Code'}
+        </button>
+      </div>
+
+      {codes.map((c, i) => (
+        <div key={i} className="card" style={{ marginBottom: '1rem', textAlign: 'center' }}>
+          <p style={{ color: 'var(--text-light)', fontSize: '0.875rem' }}>Valid for {c.exam_id}</p>
+          <div className="code-display">
+            {c.code}
+          </div>
+          <button className="btn btn-outline" onClick={() => copyToClipboard(c.code)}>Copy to Clipboard</button>
+          <p style={{ color: 'var(--danger)', fontSize: '0.875rem', marginTop: '1rem' }}>
+            Expires at: {new Date(c.expires_at).toLocaleTimeString()}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ================= TAB 4: MONITOR & RISK =================
+function TabMonitorRisk() {
+  const [examId, setExamId] = useState('');
+  const [statusData, setStatusData] = useState(null);
+  const [riskData, setRiskData] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const loadData = async () => {
+    if (!examId) return setError('Exam ID required');
+    setError('');
+    setIsLoading(true);
+    try {
+      const [sRes, rRes] = await Promise.all([
+        getExamStatus(examId).catch(() => ({ data: {} })), // Ignore if doesn't exist
+        getRiskDashboard(examId)
+      ]);
+      setStatusData(sRes.data);
+      setRiskData(rRes.data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const getBadgeClass = (level) => {
+    if (level === 'HIGH') return 'badge-high';
+    if (level === 'MEDIUM') return 'badge-medium';
+    return 'badge-low';
+  };
+
+  // Sort risk data by score descending
+  const sortedStudents = riskData?.students ? [...riskData.students].sort((a, b) => b.risk_score - a.risk_score) : [];
+
+  return (
+    <div>
+      <h2 className="card-title">Live Monitoring & Risk Dashboard</h2>
+      
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', maxWidth: '500px' }}>
+        <input style={{ flex: 1 }} type="text" placeholder="Exam ID" value={examId} onChange={e => setExamId(e.target.value)} />
+        <button className="btn btn-primary" onClick={loadData} disabled={isLoading}>
+          {isLoading ? 'Loading...' : 'Load Dashboard'}
+        </button>
+      </div>
+
+      {error && <div className="alert alert-error">⚠️ {error}</div>}
+
+      {statusData && riskData && (
+        <>
+          <div className="grid-2" style={{ marginBottom: '2rem' }}>
+            <div className="card" style={{ background: 'linear-gradient(135deg, #f8fafc, #f1f5f9)' }}>
+              <h3 style={{ marginBottom: '1rem' }}>Exam Status</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                <span>Total Candidates:</span> <strong>{statusData.total_candidates || 0}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                <span>Active Now:</span> <strong style={{ color: 'var(--success)' }}>{statusData.active || 0}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Submitted:</span> <strong>{statusData.submitted || 0}</strong>
+              </div>
+            </div>
+
+            <div className="card" style={{ background: 'linear-gradient(135deg, #f8fafc, #f1f5f9)' }}>
+              <h3 style={{ marginBottom: '1rem' }}>Risk Summary</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                <span>High Risk:</span> <span className="badge badge-high">{riskData.summary?.high || 0}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                <span>Medium Risk:</span> <span className="badge badge-medium">{riskData.summary?.medium || 0}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Low Risk:</span> <span className="badge badge-low">{riskData.summary?.low || 0}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Student ID</th>
+                  <th>Risk Level</th>
+                  <th>Score %</th>
+                  <th>Tab Switches</th>
+                  <th>Sim. Score</th>
+                  <th>Idle Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedStudents.map((s, i) => (
+                  <tr key={i} className={s.risk_level === 'HIGH' ? 'highlight' : ''}>
+                    <td><strong>{s.user_id}</strong></td>
+                    <td><span className={`badge ${getBadgeClass(s.risk_level)}`}>{s.risk_level}</span></td>
+                    <td><strong style={{ color: s.risk_score > 70 ? 'var(--danger)' : 'inherit' }}>{s.risk_score.toFixed(1)}%</strong></td>
+                    <td>{s.factors?.tab_switches || 0}</td>
+                    <td>{s.factors?.similarity_score ? (s.factors.similarity_score * 100).toFixed(1) + '%' : 'N/A'}</td>
+                    <td>{s.factors?.idle_time_seconds || 0}s</td>
+                  </tr>
+                ))}
+                {sortedStudents.length === 0 && (
+                  <tr>
+                    <td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-light)' }}>No student risk data available yet.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
 }

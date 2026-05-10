@@ -9,8 +9,13 @@ import datetime
 from functools import wraps
 from flask import request, jsonify
 
-JWT_SECRET = "exam_security_UET_2024_secret_key"
-JWT_ALGORITHM = "HS256"
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+JWT_SECRET = os.getenv("JWT_SECRET", "exam_security_UET_2024_secret_key")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 
 
 def validate_token(token: str):

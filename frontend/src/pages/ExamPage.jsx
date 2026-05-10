@@ -1,169 +1,226 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { startTimer, getTimeRemaining, getRandomQuestions, submitExam, logTabSwitch, logClipboard, logActivity } from '../api';
+import { 
+  startTimer, 
+  getTimeRemaining, 
+  getRandomQuestions, 
+  submitExam,
+  logTabSwitch,
+  logClipboard,
+  logActivity
+} from '../api';
 
 export default function ExamPage() {
-  const { examId } = useParams();
-  const nav        = useNavigate();
-  const [questions, setQuestions]   = useState([]);
-  const [answers, setAnswers]       = useState({});
-  const [remaining, setRemaining]   = useState(null);
-  const [loading, setLoading]       = useState(true);
-  const [submitted, setSubmitted]   = useState(false);
-  const [msg, setMsg]               = useState({ type:'', text:'' });
-  const timerRef = useRef(null);
+  const { id: examId } = useParams();
+  const navigate = useNavigate();
+  
+  const [questions, setQuestions] = useState([]);
+  const [answers, setAnswers] = useState({});
+  const [timeStr, setTimeStr] = useState('--:--');
+  const [secondsLeft, setSecondsLeft] = useState(9999);
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const timerInterval = useRef(null);
+  const isFinished = useRef(false);
 
-  const fmt = (s) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
-
-  // Start timer + load questions
+  // Initialize Exam & Setup Monitoring
   useEffect(() => {
-    const init = async () => {
-      const [timerRes, qRes] = await Promise.all([
-        startTimer(examId),
-        getRandomQuestions(examId)
-      ]);
-      if (timerRes.status === 'success') setRemaining(timerRes.data.remaining_seconds);
-      if (qRes.status === 'success') setQuestions(qRes.data.questions || []);
-      setLoading(false);
-      logActivity(examId, 'exam_started');
-    };
-    init();
-  }, [examId]);
+    let mounted = true;
 
-  // Countdown timer
-  useEffect(() => {
-    if (remaining === null || submitted) return;
-    timerRef.current = setInterval(async () => {
-      const res = await getTimeRemaining(examId);
-      if (res.status === 'success') {
-        const secs = res.data.remaining_seconds;
-        setRemaining(secs);
-        if (secs === 0) {
-          clearInterval(timerRef.current);
-          setMsg({ type:'warning', text:'⏰ Time expired! Auto-submitting...' });
-          handleSubmit(true);
-        }
+    const initExam = async () => {
+      try {
+        await startTimer(examId);
+        const qRes = await getRandomQuestions(examId);
+        if (mounted) setQuestions(qRes.data.questions || []);
+      } catch (err) {
+        if (mounted) setError(err.message);
       }
-    }, 5000); // poll every 5 seconds
-    return () => clearInterval(timerRef.current);
-  }, [remaining, submitted]);
+    };
 
-  // Tab switch monitoring
-  useEffect(() => {
-    const onHide = () => { logTabSwitch(examId, 'tab_hidden'); };
-    const onShow = () => { logTabSwitch(examId, 'tab_visible'); };
-    document.addEventListener('visibilitychange', () => {
-      document.hidden ? onHide() : onShow();
-    });
-    return () => document.removeEventListener('visibilitychange', ()=>{});
-  }, [examId]);
+    initExam();
 
-  // Clipboard monitoring
-  useEffect(() => {
-    const onCopy  = () => logClipboard(examId, 'copy');
-    const onPaste = () => logClipboard(examId, 'paste');
-    const onCut   = () => logClipboard(examId, 'cut');
-    document.addEventListener('copy',  onCopy);
-    document.addEventListener('paste', onPaste);
-    document.addEventListener('cut',   onCut);
+    // Setup Monitoring
+    const handleVisibility = () => {
+      if (isFinished.current) return;
+      const event = document.hidden ? 'tab_hidden' : 'tab_visible';
+      logTabSwitch(examId, event).catch(console.error);
+    };
+
+    const handleCopy = () => !isFinished.current && logClipboard(examId, 'copy').catch(console.error);
+    const handlePaste = () => !isFinished.current && logClipboard(examId, 'paste').catch(console.error);
+    const handleCut = () => !isFinished.current && logClipboard(examId, 'cut').catch(console.error);
+
+    const handleContext = (e) => {
+      if (isFinished.current) return;
+      e.preventDefault();
+      logActivity(examId, 'right_click_attempt').catch(console.error);
+    };
+
+    const handleBeforeUnload = (e) => {
+      if (!isFinished.current) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    document.addEventListener('copy', handleCopy);
+    document.addEventListener('paste', handlePaste);
+    document.addEventListener('cut', handleCut);
+    document.addEventListener('contextmenu', handleContext);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
     return () => {
-      document.removeEventListener('copy',  onCopy);
-      document.removeEventListener('paste', onPaste);
-      document.removeEventListener('cut',   onCut);
+      mounted = false;
+      document.removeEventListener('visibilitychange', handleVisibility);
+      document.removeEventListener('copy', handleCopy);
+      document.removeEventListener('paste', handlePaste);
+      document.removeEventListener('cut', handleCut);
+      document.removeEventListener('contextmenu', handleContext);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [examId]);
 
-  // Right-click block
+  // Timer Polling
   useEffect(() => {
-    const block = (e) => { e.preventDefault(); logActivity(examId, 'right_click_attempt'); };
-    document.addEventListener('contextmenu', block);
-    return () => document.removeEventListener('contextmenu', block);
+    const pollTime = async () => {
+      if (isFinished.current) return;
+      try {
+        const res = await getTimeRemaining(examId);
+        const { remaining_seconds, remaining_formatted } = res.data;
+        setSecondsLeft(remaining_seconds);
+        setTimeStr(remaining_formatted);
+
+        if (remaining_seconds <= 0) {
+          handleAutoSubmit();
+        }
+      } catch (err) {
+        console.error('Timer sync error:', err.message);
+      }
+    };
+
+    // Poll immediately, then every 5 seconds
+    pollTime();
+    timerInterval.current = setInterval(pollTime, 5000);
+
+    return () => {
+      if (timerInterval.current) clearInterval(timerInterval.current);
+    };
   }, [examId]);
 
-  const handleSubmit = async (auto = false) => {
-    if (submitted) return;
-    clearInterval(timerRef.current);
-    setSubmitted(true);
-    const answerList = Object.entries(answers).map(([question_id, answer_text]) => ({ question_id, answer_text }));
-    const res = await submitExam(examId, answerList);
-    if (res.status === 'success') {
-      setMsg({ type:'success', text: auto ? '⏰ Time up — exam auto-submitted!' : '✅ Exam submitted successfully!' });
-    } else {
-      setMsg({ type:'error', text: res.message || 'Submission failed' });
+  // Handle Form state
+  const handleAnswerChange = (qId, text) => {
+    setAnswers(prev => ({ ...prev, [qId]: text }));
+  };
+
+  const executeSubmit = async () => {
+    isFinished.current = true; // Stop monitoring
+    if (timerInterval.current) clearInterval(timerInterval.current);
+    
+    setIsSubmitting(true);
+    try {
+      const formattedAnswers = Object.entries(answers).map(([q_id, text]) => ({ question_id: q_id, answer_text: text }));
+      await submitExam(examId, formattedAnswers);
+      setIsSubmitted(true);
+    } catch (err) {
+      setError(err.message);
+      isFinished.current = false; // Re-enable if failed
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const timerClass = remaining !== null
-    ? remaining < 60 ? 'timer-box danger' : remaining < 300 ? 'timer-box warning' : 'timer-box'
-    : 'timer-box';
+  const handleManualSubmit = () => {
+    if (window.confirm("Are you sure you want to submit your exam? You cannot undo this action.")) {
+      executeSubmit();
+    }
+  };
 
-  if (loading) return (
-    <div className="loading">
-      <div className="spinner"></div>
-      <p>Loading exam...</p>
-    </div>
-  );
+  const handleAutoSubmit = () => {
+    if (!isFinished.current) {
+      alert("Time is up! Your exam is being automatically submitted.");
+      executeSubmit();
+    }
+  };
 
-  if (submitted) return (
-    <div className="login-page">
-      <div className="login-box" style={{textAlign:'center'}}>
-        <div style={{fontSize:'4rem', marginBottom:'16px'}}>✅</div>
-        <h2 style={{color:'#2e8b57', marginBottom:'8px'}}>Exam Submitted!</h2>
-        <p style={{color:'#666', marginBottom:'24px'}}>Your answers have been saved securely.</p>
-        {msg.text && <div className={`alert alert-${msg.type}`}>{msg.text}</div>}
-        <button className="btn btn-primary" onClick={() => nav('/student')}>Back to Dashboard</button>
+  // Timer Color Logic
+  let timerClass = 'timer-green';
+  if (secondsLeft <= 60) {
+    timerClass = 'timer-red';
+  } else if (secondsLeft <= 300) {
+    timerClass = 'timer-orange';
+  }
+
+  if (isSubmitted) {
+    return (
+      <div className="login-wrapper">
+        <div className="card" style={{ textAlign: 'center', maxWidth: '500px' }}>
+          <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>✅</div>
+          <h2 className="card-title">Exam Submitted Successfully</h2>
+          <p style={{ color: 'var(--text-light)', marginBottom: '2rem' }}>
+            Your answers have been recorded securely. You may now close this window or return to the dashboard.
+          </p>
+          <button className="btn btn-primary" onClick={() => navigate('/student')}>Return to Dashboard</button>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   return (
-    <div className="page">
-      <nav className="navbar">
-        <h2>🔐 Exam: {examId}</h2>
-        <div className="nav-right">
-          <span>{questions.length} Questions</span>
-        </div>
-      </nav>
+    <div style={{ paddingBottom: '100px' }}>
+      {/* Warning Banner */}
+      <div style={{ background: '#1f2937', color: '#fca5a5', padding: '0.75rem', textAlign: 'center', fontWeight: '500', fontSize: '0.875rem' }}>
+        ⚠️ THIS EXAM IS MONITORED. Tab switches, copy/paste, and right-clicks are strictly logged and flagged.
+      </div>
 
-      <div className="container">
-        <div className="grid-2" style={{marginBottom:'24px', alignItems:'start'}}>
-          <div className={timerClass}>
-            <div className="timer-time">{remaining !== null ? fmt(remaining) : '--:--'}</div>
-            <div className="timer-label">Time Remaining</div>
-          </div>
-          <div className="card">
-            {msg.text && <div className={`alert alert-${msg.type}`}>{msg.text}</div>}
-            <p style={{fontSize:'0.85rem', color:'#666', marginBottom:'12px'}}>
-              ⚠️ This exam is monitored. Tab switches, copy/paste, and right-clicks are logged.
-            </p>
-            <p style={{fontSize:'0.85rem', color:'#666', marginBottom:'16px'}}>
-              Answered: <b>{Object.keys(answers).length}</b> / {questions.length}
-            </p>
-            <button className="btn btn-primary btn-full" onClick={() => handleSubmit(false)}
-              disabled={submitted}>
-              📤 Submit Exam
-            </button>
-          </div>
+      <div className="container" style={{ maxWidth: '800px' }}>
+        {error && <div className="alert alert-error">⚠️ {error}</div>}
+
+        <div className={`timer-card ${timerClass}`}>
+          ⏱️ {timeStr}
         </div>
 
-        {questions.map((q, i) => (
-          <div key={q.question_id} className="question-card">
-            <div className="question-num">Question {i+1} — {q.marks} mark{q.marks>1?'s':''}</div>
-            <div className="question-text">{q.question_text}</div>
-            <textarea className="answer-textarea"
-              placeholder="Write your answer here..."
+        {questions.length === 0 && !error && (
+          <div style={{ textAlign: 'center', padding: '3rem' }}>
+            <span className="spinner" style={{ borderColor: 'var(--primary)', borderTopColor: 'transparent', width: '2rem', height: '2rem' }}></span>
+            <p style={{ marginTop: '1rem', color: 'var(--text-light)' }}>Loading questions...</p>
+          </div>
+        )}
+
+        {questions.map((q, idx) => (
+          <div key={q.question_id} className="card question-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <strong style={{ fontSize: '1.125rem' }}>Question {idx + 1}</strong>
+              <span className="badge badge-low">{q.marks} Marks</span>
+            </div>
+            <p style={{ fontSize: '1.125rem', marginBottom: '1.5rem', whiteSpace: 'pre-wrap' }}>
+              {q.question_text}
+            </p>
+            
+            <textarea 
+              rows="6" 
+              placeholder="Type your answer here..."
               value={answers[q.question_id] || ''}
-              onChange={e => setAnswers(a => ({...a, [q.question_id]: e.target.value}))}
-            />
+              onChange={(e) => handleAnswerChange(q.question_id, e.target.value)}
+              onPaste={(e) => { e.preventDefault(); alert("Pasting is disabled."); }}
+              onCopy={(e) => { e.preventDefault(); alert("Copying is disabled."); }}
+              onCut={(e) => { e.preventDefault(); alert("Cutting is disabled."); }}
+            ></textarea>
+            
+            <div style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--text-light)', marginTop: '0.5rem' }}>
+              {(answers[q.question_id] || '').length} characters
+            </div>
           </div>
         ))}
+      </div>
 
-        <div style={{textAlign:'center', marginTop:'20px'}}>
-          <button className="btn btn-primary" style={{padding:'14px 40px', fontSize:'1rem'}}
-            onClick={() => handleSubmit(false)} disabled={submitted}>
-            📤 Submit All Answers
-          </button>
-        </div>
+      {/* Sticky Bottom Bar */}
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'var(--white)', padding: '1rem', boxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.1)', textAlign: 'center', zIndex: 50 }}>
+        <button className="btn btn-primary" style={{ padding: '1rem 3rem', fontSize: '1.125rem' }} onClick={handleManualSubmit} disabled={isSubmitting || questions.length === 0}>
+          {isSubmitting ? <><span className="spinner"></span> Submitting...</> : 'Submit Exam'}
+        </button>
       </div>
     </div>
   );

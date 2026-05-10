@@ -1,8 +1,11 @@
-# module_06/app.py
-# MODULE 06: SECURE QUESTION DELIVERY
-# Encrypted/confidential question API — PORT: 5006
+import sys
+import os
+import datetime
+import hashlib
+import json
+from dotenv import load_dotenv
 
-import sys, os, datetime, hashlib, json
+load_dotenv()
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from flask import Flask, request
@@ -13,7 +16,7 @@ from shared.response_helper import success_response, error_response
 
 app = Flask(__name__)
 MODULE_NAME = "Module_06_QuestionDelivery"
-PORT = 6006
+PORT = 5006
 
 @app.route("/api/module06/health", methods=["GET"])
 def health():

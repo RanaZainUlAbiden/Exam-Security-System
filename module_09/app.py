@@ -10,6 +10,11 @@ from shared.jwt_helper import jwt_required
 from shared.logging_helper import send_log
 from shared.response_helper import success_response, error_response
 
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+
 app = Flask(__name__)
 MODULE_NAME = "Module_09_InputValidation"
 PORT = 5009

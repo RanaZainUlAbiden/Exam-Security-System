@@ -17,8 +17,13 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 app = Flask(__name__)
 
-MONGO_URI     = "mongodb://localhost:27017/"
-DATABASE_NAME = "exam_security"
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+MONGO_URI     = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+DATABASE_NAME = os.getenv("DATABASE_NAME", "exam_security")
 
 client = MongoClient(MONGO_URI)
 db     = client[DATABASE_NAME]
