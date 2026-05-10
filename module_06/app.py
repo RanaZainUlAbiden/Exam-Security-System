@@ -1,74 +1,108 @@
 # module_06/app.py
-# =============================================
 # MODULE 06: SECURE QUESTION DELIVERY
-# Confidential encrypted question API
-# PORT: 5006
-# =============================================
+# Encrypted/confidential question API — PORT: 5006
 
-import sys
-import os
-import datetime
-
+import sys, os, datetime, hashlib, json
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from flask import Flask, request, jsonify
+from flask import Flask, request
 from shared.jwt_helper import jwt_required, role_required
 from shared.db_config import get_db
 from shared.logging_helper import send_log
 from shared.response_helper import success_response, error_response
 
 app = Flask(__name__)
+MODULE_NAME = "Module_06_QuestionDelivery"
+PORT = 6006
 
-MODULE_NAME = "Module_06_Question_Delivery"
-PORT        = 5006
-
-# =============================================
-# HEALTH CHECK — MANDATORY, DO NOT REMOVE
-# =============================================
 @app.route("/api/module06/health", methods=["GET"])
 def health():
-    return jsonify({
-        "module":       MODULE_NAME,
-        "status":       "healthy",
-        "dependencies": ["mongodb"],
-        "version":      "1.0.0"
-    }), 200
+    return {"module": MODULE_NAME, "status": "healthy", "dependencies": ["mongodb"], "version": "1.0.0"}, 200
 
-
-# =============================================
-# YOUR MODULE ENDPOINTS GO BELOW
-# Available endpoints to implement:
-# GET  /api/module06/questions/{exam_id}
-# POST /api/module06/release-questions
-# =============================================
-
-# EXAMPLE endpoint — replace with your actual implementation
-@app.route("/api/module06/example", methods=["POST"])
+@app.route("/api/module06/add-questions", methods=["POST"])
 @jwt_required
-def example_endpoint():
-    """
-    Replace this with your actual endpoint.
-    request.user_payload contains JWT data: user_id, role, etc.
-    """
-    user = request.user_payload
-    db   = get_db()
+@role_required(["teacher"])
+def add_questions():
+    data = request.get_json()
+    if not data or "exam_id" not in data or "questions" not in data:
+        return error_response(400, "exam_id and questions required")
 
-    # Log the action
-    send_log(
-        module_name = MODULE_NAME,
-        level       = "INFO",
-        user_id     = user["user_id"],
-        exam_id     = request.json.get("exam_id", ""),
-        action      = "example_action",
-        details     = {"request_data": request.json}
+    db = get_db()
+    teacher = request.user_payload
+    now = datetime.datetime.utcnow()
+    docs = []
+
+    for q in data["questions"]:
+        if "question_text" not in q:
+            continue
+        q_id = hashlib.md5(f"{data['exam_id']}{q['question_text']}{now.isoformat()}".encode()).hexdigest()[:12]
+        docs.append({
+            "question_id": q_id,
+            "exam_id": data["exam_id"],
+            "question_text": q["question_text"],
+            "question_type": q.get("question_type", "text"),
+            "options": q.get("options", []),
+            "marks": q.get("marks", 1),
+            "teacher_id": teacher["user_id"],
+            "created_at": now.isoformat() + "Z",
+            "released": False
+        })
+
+    if docs:
+        db["questions"].insert_many(docs)
+
+    send_log(MODULE_NAME, "INFO", teacher["user_id"], data["exam_id"],
+             "questions_added", {"count": len(docs)})
+
+    return success_response(
+        data={"exam_id": data["exam_id"], "questions_added": len(docs)},
+        message=f"{len(docs)} questions added"
     )
 
-    # Your logic here
-    result = {}
+@app.route("/api/module06/release-questions", methods=["POST"])
+@jwt_required
+@role_required(["teacher"])
+def release_questions():
+    data = request.get_json()
+    if not data or "exam_id" not in data:
+        return error_response(400, "exam_id required")
 
-    return success_response(data=result, message="Action completed")
+    db = get_db()
+    result = db["questions"].update_many(
+        {"exam_id": data["exam_id"]},
+        {"$set": {"released": True}}
+    )
+    send_log(MODULE_NAME, "INFO", request.user_payload["user_id"], data["exam_id"],
+             "questions_released", {"count": result.modified_count})
+    return success_response(data={"released": result.modified_count}, message="Questions released")
 
+@app.route("/api/module06/questions/<exam_id>", methods=["GET"])
+@jwt_required
+def get_questions(exam_id):
+    db = get_db()
+    user = request.user_payload
+
+    # Check exam is IN_PROGRESS for students
+    if user["role"] == "student":
+        exam = db["exams"].find_one({"exam_id": exam_id})
+        if not exam or exam.get("state") not in ["IN_PROGRESS"]:
+            send_log(MODULE_NAME, "SECURITY", user["user_id"], exam_id,
+                     "question_access_denied", {"state": exam.get("state") if exam else "NOT_FOUND"})
+            return error_response(403, "Questions only accessible during IN_PROGRESS exam")
+
+    questions = list(db["questions"].find(
+        {"exam_id": exam_id, "released": True},
+        {"_id": 0, "teacher_id": 0}  # hide teacher info from students
+    ))
+
+    send_log(MODULE_NAME, "INFO", user["user_id"], exam_id,
+             "questions_accessed", {"count": len(questions)})
+
+    return success_response(
+        data={"exam_id": exam_id, "questions": questions, "total": len(questions)},
+        message="Questions delivered"
+    )
 
 if __name__ == "__main__":
-    print(f"🔐 Module 06 — Secure Question Delivery running on port {PORT}")
+    print(f"Module 06 — Question Delivery running on port {PORT}")
     app.run(port=PORT, debug=True)
