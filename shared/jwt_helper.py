@@ -11,6 +11,7 @@ from flask import request, jsonify
 
 import os
 from dotenv import load_dotenv
+from shared.db_config import get_db
 
 load_dotenv()
 
@@ -58,6 +59,14 @@ def jwt_required(f):
                 "status": "error",
                 "error_code": 401,
                 "message": "JWT expired or invalid",
+                "timestamp": datetime.datetime.utcnow().isoformat()
+            }), 401
+
+        if get_db()["blacklisted_tokens"].find_one({"token": token}, {"_id": 1}):
+            return jsonify({
+                "status": "error",
+                "error_code": 401,
+                "message": "Session has been invalidated. Please login again.",
                 "timestamp": datetime.datetime.utcnow().isoformat()
             }), 401
 

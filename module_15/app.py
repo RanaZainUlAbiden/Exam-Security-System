@@ -10,6 +10,7 @@ from shared.jwt_helper import jwt_required, role_required
 from shared.db_config import get_db
 from shared.logging_helper import send_log
 from shared.response_helper import success_response, error_response
+from shared.exam_state_helper import active_exam_error
 
 import os
 from dotenv import load_dotenv
@@ -33,6 +34,7 @@ def health():
 
 @app.route("/api/module15/log-behavior", methods=["POST"])
 @jwt_required
+@role_required(["student"])
 def log_behavior():
     """Log a behavioral event during exam."""
     data = request.get_json()
@@ -42,6 +44,10 @@ def log_behavior():
     user    = request.user_payload
     db      = get_db()
     now     = datetime.datetime.utcnow()
+
+    state_error = active_exam_error(db, user["user_id"], data["exam_id"])
+    if state_error:
+        return error_response(409, state_error)
 
     db["behavior_events"].insert_one({
         "user_id":    user["user_id"],
@@ -59,6 +65,7 @@ def log_behavior():
 
 @app.route("/api/module15/analyze", methods=["POST"])
 @jwt_required
+@role_required(["teacher"])
 def analyze():
     """Run behavioral analysis for a student in an exam."""
     data = request.get_json()
@@ -114,6 +121,7 @@ def analyze():
 
 @app.route("/api/module15/risk-data", methods=["GET"])
 @jwt_required
+@role_required(["teacher"])
 def risk_data():
     user_id = request.args.get("user_id")
     exam_id = request.args.get("exam_id")

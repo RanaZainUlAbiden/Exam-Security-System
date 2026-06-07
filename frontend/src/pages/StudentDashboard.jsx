@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { validateCode } from '../api';
+import { invalidateSession, validateCode } from '../api';
 
 export default function StudentDashboard() {
   const [examId, setExamId] = useState('');
@@ -11,9 +11,13 @@ export default function StudentDashboard() {
 
   const username = localStorage.getItem('username') || 'Student';
 
-  const handleLogout = () => {
-    localStorage.clear();
-    navigate('/');
+  const handleLogout = async () => {
+    try {
+      await invalidateSession();
+    } finally {
+      localStorage.clear();
+      navigate('/');
+    }
   };
 
   const handleJoinExam = async (e) => {

@@ -5,6 +5,7 @@ import {
   getTimeRemaining, 
   getRandomQuestions, 
   submitExam,
+  validateAnswer,
   logTabSwitch,
   logClipboard,
   logActivity
@@ -42,6 +43,9 @@ export default function ExamPage() {
     setIsSubmitting(true);
     try {
       const formattedAnswers = Object.entries(answersRef.current).map(([q_id, text]) => ({ question_id: q_id, answer_text: text }));
+      await Promise.all(
+        formattedAnswers.map(answer => validateAnswer(examId, answer.answer_text))
+      );
       await submitExam(examId, formattedAnswers);
       setIsSubmitted(true);
     } catch (err) {

@@ -149,10 +149,27 @@ def health():
 
 @app.route("/api/module17/risk-score/<user_id>/<exam_id>", methods=["GET"])
 @jwt_required
+@role_required(["teacher"])
 def risk_score(user_id, exam_id):
     """Compute and return risk score for a student in an exam."""
     token   = request.headers.get("Authorization","").split(" ")[-1]
     db      = get_db()
+    exam = db["exams"].find_one({"exam_id": exam_id}, {"state": 1})
+    if not exam:
+        return error_response(404, "Exam not found")
+    if exam.get("state") not in ["SUBMITTED", "ANALYZING", "COMPLETED"]:
+        return error_response(
+            409,
+            f"Risk scoring requires submitted answers. Current state: {exam.get('state')}"
+        )
+    if exam.get("state") == "SUBMITTED":
+        db["exams"].update_one(
+            {"exam_id": exam_id},
+            {"$set": {
+                "state": "ANALYZING",
+                "updated_at": datetime.datetime.utcnow().isoformat() + "Z"
+            }}
+        )
     score_doc = calculate_and_store_risk(db, user_id, exam_id, token)
 
     return success_response(
@@ -176,6 +193,22 @@ def dashboard_api():
         return error_response(400, "exam_id required")
 
     db = get_db()
+    exam = db["exams"].find_one({"exam_id": exam_id}, {"state": 1})
+    if not exam:
+        return error_response(404, "Exam not found")
+    if exam.get("state") not in ["SUBMITTED", "ANALYZING", "COMPLETED"]:
+        return error_response(
+            409,
+            f"Risk dashboard requires submitted answers. Current state: {exam.get('state')}"
+        )
+    if exam.get("state") == "SUBMITTED":
+        db["exams"].update_one(
+            {"exam_id": exam_id},
+            {"$set": {
+                "state": "ANALYZING",
+                "updated_at": datetime.datetime.utcnow().isoformat() + "Z"
+            }}
+        )
     token = request.headers.get("Authorization", "").split(" ")[-1]
     participant_ids = set(db["student_timers"].distinct("user_id", {"exam_id": exam_id}))
     participant_ids.update(db["responses"].distinct("user_id", {"exam_id": exam_id}))
@@ -184,6 +217,13 @@ def dashboard_api():
         calculate_and_store_risk(db, user_id, exam_id, token)
 
     scores = list(db["risk_scores"].find({"exam_id": exam_id}, {"_id": 0}).sort("score", -1))
+    db["exams"].update_one(
+        {"exam_id": exam_id},
+        {"$set": {
+            "state": "COMPLETED",
+            "updated_at": datetime.datetime.utcnow().isoformat() + "Z"
+        }}
+    )
 
     high   = [s for s in scores if s.get("level") == "HIGH"]
     medium = [s for s in scores if s.get("level") == "MEDIUM"]

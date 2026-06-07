@@ -14,6 +14,7 @@ from shared.jwt_helper import jwt_required, role_required
 from shared.db_config import get_db
 from shared.logging_helper import send_log
 from shared.response_helper import success_response, error_response
+from shared.exam_state_helper import active_exam_error
 
 app = Flask(__name__)
 MODULE_NAME = "Module_07_QuestionRandomization"
@@ -36,9 +37,9 @@ def randomized_questions(exam_id):
     user = request.user_payload
 
     # Check exam state
-    exam = db["exams"].find_one({"exam_id": exam_id})
-    if not exam or exam.get("state") != "IN_PROGRESS":
-        return error_response(403, "Questions only accessible during IN_PROGRESS exam")
+    state_error = active_exam_error(db, user["user_id"], exam_id)
+    if state_error:
+        return error_response(403, state_error)
 
     # Get questions
     questions = list(db["questions"].find(

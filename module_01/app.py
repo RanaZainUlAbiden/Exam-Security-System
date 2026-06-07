@@ -9,6 +9,7 @@ import sys
 import os
 import datetime
 import random
+import re
 import string
 from dotenv import load_dotenv
 
@@ -69,16 +70,42 @@ def register():
 
     if data["role"] not in ["student", "teacher"]:
         return error_response(400, "Role must be 'student' or 'teacher'")
+    if not re.fullmatch(r"[A-Za-z0-9_]{3,30}", str(data["username"])):
+        return error_response(
+            400,
+            "Username must be 3-30 characters using letters, numbers, or underscores"
+        )
+    password = str(data["password"])
+    if (
+        len(password) < 8
+        or not re.search(r"[A-Za-z]", password)
+        or not re.search(r"\d", password)
+    ):
+        return error_response(
+            400,
+            "Password must be at least 8 characters and include a letter and number"
+        )
 
     db    = get_db()
     users = db["users"]
 
-    # Check duplicate
+    # Check duplicate before role provisioning so duplicate registration remains 409.
     if users.find_one({"username": data["username"]}):
         return error_response(409, "Username already exists")
 
+    if data["role"] == "teacher" and users.find_one({"role": "teacher"}):
+        registration_code = os.getenv("TEACHER_REGISTRATION_CODE", "")
+        if (
+            not registration_code
+            or data.get("teacher_registration_code") != registration_code
+        ):
+            return error_response(
+                403,
+                "Teacher registration requires an administrator invitation code"
+            )
+
     # Hash password with bcrypt
-    hashed = bcrypt.hashpw(data["password"].encode("utf-8"), bcrypt.gensalt())
+    hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
 
     user = {
         "username":          data["username"],

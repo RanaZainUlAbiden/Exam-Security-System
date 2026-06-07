@@ -13,6 +13,7 @@ from shared.jwt_helper import jwt_required, role_required
 from shared.db_config import get_db
 from shared.logging_helper import send_log
 from shared.response_helper import success_response, error_response
+from shared.exam_state_helper import active_exam_error
 
 app = Flask(__name__)
 MODULE_NAME = "Module_06_QuestionDelivery"
@@ -87,11 +88,11 @@ def get_questions(exam_id):
 
     # Check exam is IN_PROGRESS for students
     if user["role"] == "student":
-        exam = db["exams"].find_one({"exam_id": exam_id})
-        if not exam or exam.get("state") not in ["IN_PROGRESS"]:
+        state_error = active_exam_error(db, user["user_id"], exam_id)
+        if state_error:
             send_log(MODULE_NAME, "SECURITY", user["user_id"], exam_id,
-                     "question_access_denied", {"state": exam.get("state") if exam else "NOT_FOUND"})
-            return error_response(403, "Questions only accessible during IN_PROGRESS exam")
+                     "question_access_denied", {"reason": state_error})
+            return error_response(403, state_error)
 
     questions = list(db["questions"].find(
         {"exam_id": exam_id, "released": True},

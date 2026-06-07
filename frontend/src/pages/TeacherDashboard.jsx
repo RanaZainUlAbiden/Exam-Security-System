@@ -6,7 +6,9 @@ import {
   releaseQuestions, 
   generateCode, 
   getExamStatus, 
-  getRiskDashboard 
+  getRiskDashboard,
+  invalidateSession,
+  runSimilarityAnalysis
 } from '../api';
 
 export default function TeacherDashboard() {
@@ -14,9 +16,13 @@ export default function TeacherDashboard() {
   const username = localStorage.getItem('username') || 'Teacher';
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    localStorage.clear();
-    navigate('/');
+  const handleLogout = async () => {
+    try {
+      await invalidateSession();
+    } finally {
+      localStorage.clear();
+      navigate('/');
+    }
   };
 
   return (
@@ -252,12 +258,18 @@ function TabMonitorRisk() {
     setError('');
     setIsLoading(true);
     try {
-      const [sRes, rRes] = await Promise.all([
-        getExamStatus(examId).catch(() => ({ data: {} })), // Ignore if doesn't exist
-        getRiskDashboard(examId)
-      ]);
+      const sRes = await getExamStatus(examId);
       setStatusData(sRes.data);
-      setRiskData(rRes.data);
+      if (['SUBMITTED', 'ANALYZING', 'COMPLETED'].includes(sRes.data.state)) {
+        await runSimilarityAnalysis(examId);
+        const rRes = await getRiskDashboard(examId);
+        setRiskData(rRes.data);
+      } else {
+        setRiskData({
+          summary: { high: 0, medium: 0, low: 0 },
+          students: []
+        });
+      }
     } catch (err) {
       setError(err.message);
     } finally {

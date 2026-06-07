@@ -14,6 +14,8 @@ const URLS = {
   tabmon:    `${API_BASE}/api/module10`,
   clipboard: `${API_BASE}/api/module11`,
   activity:  `${API_BASE}/api/module12`,
+  behavior:  `${API_BASE}/api/module15`,
+  similarity:`${API_BASE}/api/module16`,
   risk:      `${API_BASE}/api/module17`,
 };
 
@@ -30,10 +32,7 @@ async function fetchApi(url, options = {}) {
     const response = await fetch(url, { ...options, headers });
     const data = await response.json();
 
-    const authFailure = response.status === 401 && (
-      data.message?.includes('JWT') ||
-      data.message?.includes('Authorization header')
-    );
+    const authFailure = response.status === 401 && Boolean(token);
     if (authFailure) {
       localStorage.clear();
       window.location.href = '/';
@@ -60,6 +59,19 @@ export const verifyOtp = (user_id, otp) =>
 
 export const register = (username, password, role) => 
   fetchApi(`${URLS.auth}/register`, { method: 'POST', body: JSON.stringify({ username, password, role }) });
+
+// ================= SESSION (Modules 02 & 14) =================
+export const invalidateSession = () =>
+  fetchApi(`${URLS.session}/invalidate-session`, {
+    method: 'POST',
+    body: JSON.stringify({ reason: 'user_logout' })
+  });
+
+export const registerSession = () =>
+  fetchApi(`${API_BASE}/api/module14/register-session`, {
+    method: 'POST',
+    body: JSON.stringify({})
+  });
 
 // ================= DEVICE (Module 03) =================
 export const registerDevice = () => {
@@ -94,6 +106,12 @@ export const getTimeRemaining = (exam_id) =>
 export const submitExam = (exam_id, answers) => 
   fetchApi(`${URLS.timer}/submit-exam`, { method: 'POST', body: JSON.stringify({ exam_id, answers }) });
 
+export const validateAnswer = (exam_id, answer) =>
+  fetchApi(`${API_BASE}/api/module09/validate-input`, {
+    method: 'POST',
+    body: JSON.stringify({ exam_id, answer })
+  });
+
 export const getExamStatus = (exam_id) => 
   fetchApi(`${URLS.timer}/exam-status/${exam_id}`);
 
@@ -120,3 +138,9 @@ export const logActivity = (exam_id, action) =>
 // ================= RISK SCORE (Module 17) =================
 export const getRiskDashboard = (exam_id) => 
   fetchApi(`${URLS.risk}/dashboard?exam_id=${exam_id}`);
+
+export const runSimilarityAnalysis = (exam_id) =>
+  fetchApi(`${URLS.similarity}/check-similarity`, {
+    method: 'POST',
+    body: JSON.stringify({ exam_id })
+  });

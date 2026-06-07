@@ -8,6 +8,7 @@
 from flask import Flask, request, jsonify
 from pymongo import MongoClient
 import hashlib
+import hmac
 import datetime
 import json
 import sys
@@ -24,6 +25,10 @@ load_dotenv()
 
 MONGO_URI     = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 DATABASE_NAME = os.getenv("DATABASE_NAME", "exam_security")
+LOGGING_GATEWAY_SECRET = os.getenv(
+    "LOGGING_GATEWAY_SECRET",
+    os.getenv("JWT_SECRET", "exam_security_UET_2024_secret_key")
+)
 
 client = MongoClient(MONGO_URI)
 db     = client[DATABASE_NAME]
@@ -31,6 +36,11 @@ logs   = db["logs"]
 
 VALID_LEVELS  = ["INFO", "WARNING", "ERROR", "SECURITY"]
 VALID_MODULES = [f"Module_{str(i).zfill(2)}_" for i in range(1, 18)]
+
+
+def gateway_authorized():
+    supplied = request.headers.get("X-Logging-Secret", "")
+    return hmac.compare_digest(supplied, LOGGING_GATEWAY_SECRET)
 
 
 def compute_integrity_hash(log_entry: dict) -> str:
@@ -49,6 +59,13 @@ def compute_integrity_hash(log_entry: dict) -> str:
 @app.route("/api/logs/write", methods=["POST"])
 def write_log():
     """Receive log from any module and store with SHA-256 integrity hash."""
+    if not gateway_authorized():
+        return jsonify({
+            "status": "error",
+            "error_code": 401,
+            "message": "Invalid logging gateway credentials"
+        }), 401
+
     data = request.get_json()
 
     if not data:
@@ -102,6 +119,13 @@ def health():
 @app.route("/api/logs/verify/<log_id>", methods=["GET"])
 def verify_log_integrity(log_id):
     """Verify SHA-256 integrity of a stored log."""
+    if not gateway_authorized():
+        return jsonify({
+            "status": "error",
+            "error_code": 401,
+            "message": "Invalid logging gateway credentials"
+        }), 401
+
     from bson import ObjectId
     try:
         log = logs.find_one({"_id": ObjectId(log_id)})

@@ -28,11 +28,14 @@ def register_session():
     user    = request.user_payload
     db      = get_db()
     now     = datetime.datetime.utcnow()
+    token   = request.headers.get("Authorization", "").split(" ", 1)[-1]
+    session_id = user.get("session_id")
 
     # Check for existing active sessions
     existing = list(db["active_sessions"].find({
         "user_id": user["user_id"],
-        "active":  True
+        "active":  True,
+        "session_id": {"$ne": session_id}
     }))
 
     if existing:
@@ -43,20 +46,42 @@ def register_session():
 
         # Invalidate old sessions
         db["active_sessions"].update_many(
-            {"user_id": user["user_id"], "active": True},
+            {
+                "user_id": user["user_id"],
+                "active": True,
+                "session_id": {"$ne": session_id}
+            },
             {"$set": {"active": False, "terminated_at": now.isoformat()+"Z", "reason": "new_session_detected"}}
         )
+        for previous in existing:
+            previous_token = previous.get("token")
+            if previous_token:
+                db["blacklisted_tokens"].update_one(
+                    {"token": previous_token},
+                    {"$set": {
+                        "token": previous_token,
+                        "user_id": user["user_id"],
+                        "invalidated_at": now.isoformat() + "Z",
+                        "reason": "new_session_detected"
+                    }},
+                    upsert=True
+                )
 
     # Register new session
-    db["active_sessions"].insert_one({
-        "user_id":    user["user_id"],
-        "session_id": user.get("session_id"),
-        "exam_id":    data.get("exam_id", ""),
-        "ip_address": request.remote_addr,
-        "user_agent": request.headers.get("User-Agent", ""),
-        "started_at": now.isoformat() + "Z",
-        "active":     True
-    })
+    db["active_sessions"].update_one(
+        {"user_id": user["user_id"], "session_id": session_id},
+        {"$set": {
+            "user_id":    user["user_id"],
+            "session_id": session_id,
+            "token":      token,
+            "exam_id":    data.get("exam_id", ""),
+            "ip_address": request.remote_addr,
+            "user_agent": request.headers.get("User-Agent", ""),
+            "started_at": now.isoformat() + "Z",
+            "active":     True
+        }},
+        upsert=True
+    )
 
     was_multi = len(existing) > 0
     return success_response(
@@ -73,7 +98,8 @@ def check_session():
     db   = get_db()
 
     sessions = list(db["active_sessions"].find(
-        {"user_id": user["user_id"], "active": True}, {"_id": 0}
+        {"user_id": user["user_id"], "active": True},
+        {"_id": 0, "token": 0}
     ))
 
     is_multiple = len(sessions) > 1
@@ -89,6 +115,7 @@ def check_session():
 
 @app.route("/api/module14/risk-data", methods=["GET"])
 @jwt_required
+@role_required(["teacher"])
 def risk_data():
     user_id = request.args.get("user_id")
     exam_id = request.args.get("exam_id")

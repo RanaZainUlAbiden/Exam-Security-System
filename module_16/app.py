@@ -286,6 +286,7 @@ def check_similarity():
 # ─────────────────────────────────────────────────────────────────────────────
 @app.route("/api/module16/risk-data", methods=["GET"])
 @jwt_required
+@role_required(["teacher"])
 def get_risk_data():
     db      = get_db()
     user    = request.user_payload

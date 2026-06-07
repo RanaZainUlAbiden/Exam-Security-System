@@ -6,10 +6,11 @@ import sys, os, datetime
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from flask import Flask, request
-from shared.jwt_helper import jwt_required
+from shared.jwt_helper import jwt_required, role_required
 from shared.db_config import get_db
 from shared.logging_helper import send_log
 from shared.response_helper import success_response, error_response
+from shared.exam_state_helper import active_exam_error
 
 import os
 from dotenv import load_dotenv
@@ -26,6 +27,7 @@ def health():
 
 @app.route("/api/module11/clipboard-event", methods=["POST"])
 @jwt_required
+@role_required(["student"])
 def clipboard_event():
     """Called by frontend on copy/paste/cut events."""
     data = request.get_json()
@@ -39,6 +41,10 @@ def clipboard_event():
     exam_id = data["exam_id"]
     db      = get_db()
     now     = datetime.datetime.utcnow()
+
+    state_error = active_exam_error(db, user["user_id"], exam_id)
+    if state_error:
+        return error_response(409, state_error)
 
     db["clipboard_events"].insert_one({
         "user_id":    user["user_id"],
@@ -69,6 +75,7 @@ def clipboard_event():
 
 @app.route("/api/module11/risk-data", methods=["GET"])
 @jwt_required
+@role_required(["teacher"])
 def risk_data():
     user_id = request.args.get("user_id")
     exam_id = request.args.get("exam_id")

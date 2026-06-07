@@ -435,6 +435,11 @@ def submit_exam():
     exam = db["exams"].find_one({"exam_id": exam_id})
     if not exam:
         return error_response(404, "Exam not found")
+    if exam.get("state") != "IN_PROGRESS":
+        return error_response(
+            409,
+            f"Answer submission requires IN_PROGRESS state. Current state: {exam.get('state')}"
+        )
 
 
     # Check time — reject late submission
@@ -620,6 +625,7 @@ def exam_status(exam_id):
 
 @app.route("/api/module08/risk-data", methods=["GET"])
 @jwt_required
+@role_required(["teacher"])
 def risk_data():
     user_id = request.args.get("user_id")
     exam_id = request.args.get("exam_id")

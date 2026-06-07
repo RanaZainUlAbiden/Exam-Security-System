@@ -13,6 +13,10 @@ LOGGING_GATEWAY_URL = os.getenv(
     "LOGGING_GATEWAY_URL",
     "http://localhost:5000/api/logs/write"
 )
+LOGGING_GATEWAY_SECRET = os.getenv(
+    "LOGGING_GATEWAY_SECRET",
+    os.getenv("JWT_SECRET", "exam_security_UET_2024_secret_key")
+)
 
 LOG_LEVELS = ["INFO", "WARNING", "ERROR", "SECURITY"]
 
@@ -49,7 +53,12 @@ def send_log(module_name: str, level: str, user_id: str,
     }
 
     try:
-        response = requests.post(LOGGING_GATEWAY_URL, json=payload, timeout=3)
+        response = requests.post(
+            LOGGING_GATEWAY_URL,
+            json=payload,
+            headers={"X-Logging-Secret": LOGGING_GATEWAY_SECRET},
+            timeout=3
+        )
         return response.status_code == 202
     except requests.exceptions.ConnectionError:
         # Logging gateway down — don't crash the module

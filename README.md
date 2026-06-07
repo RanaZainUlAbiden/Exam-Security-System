@@ -130,3 +130,6 @@ python app.py
 The full React frontend, logging gateway, and all 17 Flask modules can run as
 one Docker web service backed by MongoDB Atlas. See [DEPLOYMENT.md](DEPLOYMENT.md)
 for the verified Render deployment steps.
+
+For the group-by-group live verification procedure, see
+[MODULE_LIVE_TEST_GUIDE.md](MODULE_LIVE_TEST_GUIDE.md).

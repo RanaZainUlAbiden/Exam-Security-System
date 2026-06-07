@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { login, verifyOtp, register, registerDevice } from '../api';
+import { login, verifyOtp, register, registerDevice, registerSession } from '../api';
 
 export default function Login() {
   const [activeTab, setActiveTab] = useState('login'); // 'login' or 'register'
@@ -12,7 +12,6 @@ export default function Login() {
   // Form State
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('student');
   const [otp, setOtp] = useState('');
   const [userId, setUserId] = useState(null);
 
@@ -48,9 +47,10 @@ export default function Login() {
 
       // Register device automatically
       try {
+        await registerSession();
         await registerDevice();
       } catch (err) {
-        console.warn('Device registration failed:', err.message);
+        console.warn('Session or device registration failed:', err.message);
       }
 
       if (userRole === 'teacher') navigate('/teacher');
@@ -69,7 +69,7 @@ export default function Login() {
     setSuccess('');
     setIsLoading(true);
     try {
-      await register(username, password, role);
+      await register(username, password, 'student');
       setSuccess('Registration successful! You can now login.');
       setActiveTab('login');
       setStep(1);
@@ -145,12 +145,8 @@ export default function Login() {
               </form>
             ) : (
               <form onSubmit={handleRegisterSubmit}>
-                <div className="form-group">
-                  <label>Role</label>
-                  <select value={role} onChange={e => setRole(e.target.value)} required>
-                    <option value="student">Student</option>
-                    <option value="teacher">Teacher</option>
-                  </select>
+                <div className="alert alert-warning">
+                  Student self-registration only. Teacher accounts are created by an administrator.
                 </div>
                 <div className="form-group">
                   <label>Username</label>
