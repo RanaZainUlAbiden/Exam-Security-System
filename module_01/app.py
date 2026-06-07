@@ -133,7 +133,9 @@ def login():
         return error_response(401, "Invalid credentials")
 
     # Generate OTP for MFA
-    otp = "".join(random.choices(string.digits, k=6))
+    demo_otp = os.getenv("DEMO_OTP", "").strip()
+    otp = demo_otp if demo_otp.isdigit() and len(demo_otp) == 6 else \
+        "".join(random.choices(string.digits, k=6))
     otp_store[str(user["_id"])] = {
         "otp":        otp,
         "expires_at": (datetime.datetime.utcnow() + datetime.timedelta(minutes=5)).isoformat()

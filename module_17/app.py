@@ -21,16 +21,23 @@ load_dotenv()
 app = Flask(__name__)
 MODULE_NAME = "Module_17_RiskScoring"
 PORT = 5017
+MODULE_BASE_URL = os.getenv("MODULE_BASE_URL", "").rstrip("/")
+
+
+def module_url(port, path):
+    if MODULE_BASE_URL:
+        return f"{MODULE_BASE_URL}{path}"
+    return f"http://127.0.0.1:{port}{path}"
 
 # Module URLs for risk data
 RISK_MODULES = {
-    "tab_monitor":     "http://127.0.0.1:5010/api/module10/risk-data",
-    "clipboard":       "http://127.0.0.1:5011/api/module11/risk-data",
-    "activity":        "http://127.0.0.1:5012/api/module12/risk-data",
-    "multi_session":   "http://127.0.0.1:5014/api/module14/risk-data",
-    "behavioral":      "http://127.0.0.1:5015/api/module15/risk-data",
-    "similarity":      "http://127.0.0.1:5016/api/module16/risk-data",
-    "secure_timer":    "http://127.0.0.1:5008/api/module08/risk-data",
+    "tab_monitor":     module_url(5010, "/api/module10/risk-data"),
+    "clipboard":       module_url(5011, "/api/module11/risk-data"),
+    "activity":        module_url(5012, "/api/module12/risk-data"),
+    "multi_session":   module_url(5014, "/api/module14/risk-data"),
+    "behavioral":      module_url(5015, "/api/module15/risk-data"),
+    "similarity":      module_url(5016, "/api/module16/risk-data"),
+    "secure_timer":    module_url(5008, "/api/module08/risk-data"),
 }
 
 def normalize(value, max_val):

@@ -1,18 +1,20 @@
 // src/api.js
 
+const API_BASE = (process.env.REACT_APP_API_BASE_URL || '').replace(/\/$/, '');
+
 const URLS = {
-  auth:      'http://localhost:5001/api/module01',
-  session:   'http://localhost:5002/api/module02',
-  device:    'http://localhost:5003/api/module03',
-  activation:'http://localhost:5004/api/module04',
-  rbac:      'http://localhost:5005/api/module05',
-  questions: 'http://localhost:5006/api/module06',
-  random:    'http://localhost:5007/api/module07',
-  timer:     'http://localhost:5008/api/module08',
-  tabmon:    'http://localhost:5010/api/module10',
-  clipboard: 'http://localhost:5011/api/module11',
-  activity:  'http://localhost:5012/api/module12',
-  risk:      'http://localhost:5017/api/module17',
+  auth:      `${API_BASE}/api/module01`,
+  session:   `${API_BASE}/api/module02`,
+  device:    `${API_BASE}/api/module03`,
+  activation:`${API_BASE}/api/module04`,
+  rbac:      `${API_BASE}/api/module05`,
+  questions: `${API_BASE}/api/module06`,
+  random:    `${API_BASE}/api/module07`,
+  timer:     `${API_BASE}/api/module08`,
+  tabmon:    `${API_BASE}/api/module10`,
+  clipboard: `${API_BASE}/api/module11`,
+  activity:  `${API_BASE}/api/module12`,
+  risk:      `${API_BASE}/api/module17`,
 };
 
 // Helper to handle tokens and common fetch logic
@@ -26,15 +28,18 @@ async function fetchApi(url, options = {}) {
 
   try {
     const response = await fetch(url, { ...options, headers });
-    
-    // Auto-logout on 401 Unauthorized
-    if (response.status === 401) {
+    const data = await response.json();
+
+    const authFailure = response.status === 401 && (
+      data.message?.includes('JWT') ||
+      data.message?.includes('Authorization header')
+    );
+    if (authFailure) {
       localStorage.clear();
       window.location.href = '/';
       throw new Error('Session expired. Please login again.');
     }
 
-    const data = await response.json();
     if (!response.ok) {
       throw new Error(data.message || data.error || 'An API error occurred');
     }
@@ -59,15 +64,12 @@ export const register = (username, password, role) =>
 // ================= DEVICE (Module 03) =================
 export const registerDevice = () => {
   const payload = {
-    exam_id: "global", // Default for login phase
-    device_fingerprint: {
-      userAgent: navigator.userAgent,
-      platform: navigator.platform,
-      screenResolution: `${window.screen.width}x${window.screen.height}`,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      language: navigator.language,
-      colorDepth: window.screen.colorDepth
-    }
+    user_agent: navigator.userAgent,
+    platform: navigator.platform,
+    screen_resolution: `${window.screen.width}x${window.screen.height}`,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    language: navigator.language,
+    color_depth: String(window.screen.colorDepth)
   };
   return fetchApi(`${URLS.device}/register-device`, { method: 'POST', body: JSON.stringify(payload) });
 };
@@ -81,7 +83,7 @@ export const validateCode = (code, exam_id) =>
 
 // ================= EXAM & TIMER (Module 08) =================
 export const createExam = (exam_id, exam_title, duration_minutes) => 
-  fetchApi(`${URLS.timer}/create-exam`, { method: 'POST', body: JSON.stringify({ exam_id, title: exam_title, duration_minutes: parseInt(duration_minutes) }) });
+  fetchApi(`${URLS.timer}/create-exam`, { method: 'POST', body: JSON.stringify({ exam_id, exam_title, duration_minutes: parseInt(duration_minutes) }) });
 
 export const startTimer = (exam_id) => 
   fetchApi(`${URLS.timer}/start-timer`, { method: 'POST', body: JSON.stringify({ exam_id }) });
@@ -110,7 +112,7 @@ export const logTabSwitch = (exam_id, event_type) =>
   fetchApi(`${URLS.tabmon}/tab-switch`, { method: 'POST', body: JSON.stringify({ exam_id, event_type }) });
 
 export const logClipboard = (exam_id, event_type) => 
-  fetchApi(`${URLS.clipboard}/clipboard-event`, { method: 'POST', body: JSON.stringify({ exam_id, action: event_type }) });
+  fetchApi(`${URLS.clipboard}/clipboard-event`, { method: 'POST', body: JSON.stringify({ exam_id, event_type }) });
 
 export const logActivity = (exam_id, action) => 
   fetchApi(`${URLS.activity}/log-activity`, { method: 'POST', body: JSON.stringify({ exam_id, action }) });

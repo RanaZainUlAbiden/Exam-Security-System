@@ -272,7 +272,8 @@ function TabMonitorRisk() {
   };
 
   // Sort risk data by score descending
-  const sortedStudents = riskData?.students ? [...riskData.students].sort((a, b) => b.risk_score - a.risk_score) : [];
+  const sortedStudents = riskData?.students ? [...riskData.students].sort((a, b) => b.score - a.score) : [];
+  const examSummary = statusData?.summary || {};
 
   return (
     <div>
@@ -293,13 +294,13 @@ function TabMonitorRisk() {
             <div className="card" style={{ background: 'linear-gradient(135deg, #f8fafc, #f1f5f9)' }}>
               <h3 style={{ marginBottom: '1rem' }}>Exam Status</h3>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <span>Total Candidates:</span> <strong>{statusData.total_candidates || 0}</strong>
+                <span>Total Candidates:</span> <strong>{examSummary.total_students || 0}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <span>Active Now:</span> <strong style={{ color: 'var(--success)' }}>{statusData.active || 0}</strong>
+                <span>Active Now:</span> <strong style={{ color: 'var(--success)' }}>{examSummary.active || 0}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Submitted:</span> <strong>{statusData.submitted || 0}</strong>
+                <span>Submitted:</span> <strong>{examSummary.submitted || 0}</strong>
               </div>
             </div>
 
@@ -331,13 +332,13 @@ function TabMonitorRisk() {
               </thead>
               <tbody>
                 {sortedStudents.map((s, i) => (
-                  <tr key={i} className={s.risk_level === 'HIGH' ? 'highlight' : ''}>
+                  <tr key={i} className={s.level === 'HIGH' ? 'highlight' : ''}>
                     <td><strong>{s.user_id}</strong></td>
-                    <td><span className={`badge ${getBadgeClass(s.risk_level)}`}>{s.risk_level}</span></td>
-                    <td><strong style={{ color: s.risk_score > 70 ? 'var(--danger)' : 'inherit' }}>{s.risk_score.toFixed(1)}%</strong></td>
-                    <td>{s.factors?.tab_switches || 0}</td>
-                    <td>{s.factors?.similarity_score ? (s.factors.similarity_score * 100).toFixed(1) + '%' : 'N/A'}</td>
-                    <td>{s.factors?.idle_time_seconds || 0}s</td>
+                    <td><span className={`badge ${getBadgeClass(s.level)}`}>{s.level}</span></td>
+                    <td><strong style={{ color: s.score > 70 ? 'var(--danger)' : 'inherit' }}>{s.score.toFixed(1)}%</strong></td>
+                    <td>{s.breakdown?.tab_switches || 0}</td>
+                    <td>{s.breakdown?.similarity_score ? (s.breakdown.similarity_score * 100).toFixed(1) + '%' : 'N/A'}</td>
+                    <td>{s.breakdown?.idle_time_sec || 0}s</td>
                   </tr>
                 ))}
                 {sortedStudents.length === 0 && (

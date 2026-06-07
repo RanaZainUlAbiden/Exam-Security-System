@@ -122,3 +122,11 @@ python app.py
 **Integration Lead:** Rana Zain Ul Abiden
 - All integration questions → WhatsApp Group
 - Code issues → GitHub Issues tab (tag your module number)
+
+---
+
+## Demo Deployment
+
+The full React frontend, logging gateway, and all 17 Flask modules can run as
+one Docker web service backed by MongoDB Atlas. See [DEPLOYMENT.md](DEPLOYMENT.md)
+for the verified Render deployment steps.

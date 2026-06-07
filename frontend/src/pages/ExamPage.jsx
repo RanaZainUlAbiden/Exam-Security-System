@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   startTimer, 
@@ -24,6 +24,46 @@ export default function ExamPage() {
   
   const timerInterval = useRef(null);
   const isFinished = useRef(false);
+  const answersRef = useRef(answers);
+
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
+
+  // Handle Form state
+  const handleAnswerChange = (qId, text) => {
+    setAnswers(prev => ({ ...prev, [qId]: text }));
+  };
+
+  const executeSubmit = useCallback(async () => {
+    isFinished.current = true; // Stop monitoring
+    if (timerInterval.current) clearInterval(timerInterval.current);
+
+    setIsSubmitting(true);
+    try {
+      const formattedAnswers = Object.entries(answersRef.current).map(([q_id, text]) => ({ question_id: q_id, answer_text: text }));
+      await submitExam(examId, formattedAnswers);
+      setIsSubmitted(true);
+    } catch (err) {
+      setError(err.message);
+      isFinished.current = false; // Re-enable if failed
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [examId]);
+
+  const handleAutoSubmit = useCallback(() => {
+    if (!isFinished.current) {
+      alert("Time is up! Your exam is being automatically submitted.");
+      executeSubmit();
+    }
+  }, [executeSubmit]);
+
+  const handleManualSubmit = () => {
+    if (window.confirm("Are you sure you want to submit your exam? You cannot undo this action.")) {
+      executeSubmit();
+    }
+  };
 
   // Initialize Exam & Setup Monitoring
   useEffect(() => {
@@ -89,9 +129,9 @@ export default function ExamPage() {
       if (isFinished.current) return;
       try {
         const res = await getTimeRemaining(examId);
-        const { remaining_seconds, remaining_formatted } = res.data;
+        const { remaining_seconds, remaining_display } = res.data;
         setSecondsLeft(remaining_seconds);
-        setTimeStr(remaining_formatted);
+        setTimeStr(remaining_display);
 
         if (remaining_seconds <= 0) {
           handleAutoSubmit();
@@ -108,42 +148,7 @@ export default function ExamPage() {
     return () => {
       if (timerInterval.current) clearInterval(timerInterval.current);
     };
-  }, [examId]);
-
-  // Handle Form state
-  const handleAnswerChange = (qId, text) => {
-    setAnswers(prev => ({ ...prev, [qId]: text }));
-  };
-
-  const executeSubmit = async () => {
-    isFinished.current = true; // Stop monitoring
-    if (timerInterval.current) clearInterval(timerInterval.current);
-    
-    setIsSubmitting(true);
-    try {
-      const formattedAnswers = Object.entries(answers).map(([q_id, text]) => ({ question_id: q_id, answer_text: text }));
-      await submitExam(examId, formattedAnswers);
-      setIsSubmitted(true);
-    } catch (err) {
-      setError(err.message);
-      isFinished.current = false; // Re-enable if failed
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleManualSubmit = () => {
-    if (window.confirm("Are you sure you want to submit your exam? You cannot undo this action.")) {
-      executeSubmit();
-    }
-  };
-
-  const handleAutoSubmit = () => {
-    if (!isFinished.current) {
-      alert("Time is up! Your exam is being automatically submitted.");
-      executeSubmit();
-    }
-  };
+  }, [examId, handleAutoSubmit]);
 
   // Timer Color Logic
   let timerClass = 'timer-green';

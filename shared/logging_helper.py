@@ -7,8 +7,12 @@
 
 import requests
 import datetime
+import os
 
-LOGGING_GATEWAY_URL = "http://localhost:5000/api/logs/write"
+LOGGING_GATEWAY_URL = os.getenv(
+    "LOGGING_GATEWAY_URL",
+    "http://localhost:5000/api/logs/write"
+)
 
 LOG_LEVELS = ["INFO", "WARNING", "ERROR", "SECURITY"]
 

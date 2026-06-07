@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: secure-exam-system
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: DATABASE_NAME
+        value: exam_security
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: DEMO_OTP
+        sync: false
+      - key: LOGGING_GATEWAY_URL
+        value: http://127.0.0.1:10000/api/logs/write
+      - key: MODULE_BASE_URL
+        value: http://127.0.0.1:10000
