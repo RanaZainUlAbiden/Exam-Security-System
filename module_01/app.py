@@ -15,6 +15,7 @@ import smtplib
 import string
 from email.message import EmailMessage
 from dotenv import load_dotenv
+import requests
 
 load_dotenv()
 
@@ -53,7 +54,14 @@ def normalize_email(value: str) -> str:
 
 
 def email_otp_configured() -> bool:
-    return bool(os.getenv("SMTP_HOST") and os.getenv("SMTP_FROM_EMAIL"))
+    from_email = os.getenv("SMTP_FROM_EMAIL")
+    return bool(
+        from_email
+        and (
+            os.getenv("BREVO_API_KEY")
+            or os.getenv("SMTP_HOST")
+        )
+    )
 
 
 def generate_otp() -> str:
@@ -64,28 +72,18 @@ def generate_otp() -> str:
 
 
 def send_otp_email(to_email: str, otp: str) -> bool:
-    """Send OTP using SMTP environment variables when configured."""
+    """Send OTP using Brevo API when available, otherwise SMTP."""
     if not email_otp_configured():
         return False
 
-    host = os.getenv("SMTP_HOST")
-    port = int(os.getenv("SMTP_PORT", "587"))
-    username = os.getenv("SMTP_USERNAME", "")
-    password = os.getenv("SMTP_PASSWORD", "")
     from_email = os.getenv("SMTP_FROM_EMAIL")
-    use_tls = os.getenv("SMTP_USE_TLS", "true").lower() != "false"
-
-    msg = EmailMessage()
-    msg["Subject"] = "Secure Exam System OTP"
-    msg["From"] = from_email
-    msg["To"] = to_email
-    msg.set_content(
+    subject = "Secure Exam System OTP"
+    text_content = (
         f"Your Secure Exam System OTP is {otp}. "
         "It expires in 5 minutes. Do not share it with anyone."
     )
     escaped_otp = html.escape(otp)
-    msg.add_alternative(
-        f"""
+    html_content = f"""
         <html>
           <body>
             <p>Your Secure Exam System OTP is:</p>
@@ -93,9 +91,47 @@ def send_otp_email(to_email: str, otp: str) -> bool:
             <p>This code expires in 5 minutes. Do not share it with anyone.</p>
           </body>
         </html>
-        """,
-        subtype="html",
-    )
+        """
+
+    api_key = os.getenv("BREVO_API_KEY", "").strip()
+    if api_key:
+        response = requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={
+                "api-key": api_key,
+                "Content-Type": "application/json",
+            },
+            json={
+                "sender": {
+                    "email": from_email,
+                    "name": "Secure Exam System",
+                },
+                "to": [{"email": to_email}],
+                "subject": subject,
+                "textContent": text_content,
+                "htmlContent": html_content,
+            },
+            timeout=10,
+        )
+        if response.status_code >= 400:
+            raise RuntimeError(
+                f"Brevo API email failed: HTTP {response.status_code} "
+                f"{response.text[:300]}"
+            )
+        return True
+
+    host = os.getenv("SMTP_HOST")
+    port = int(os.getenv("SMTP_PORT", "587"))
+    username = os.getenv("SMTP_USERNAME", "")
+    password = os.getenv("SMTP_PASSWORD", "")
+    use_tls = os.getenv("SMTP_USE_TLS", "true").lower() != "false"
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = from_email
+    msg["To"] = to_email
+    msg.set_content(text_content)
+    msg.add_alternative(html_content, subtype="html")
 
     with smtplib.SMTP(host, port, timeout=10) as server:
         if use_tls:

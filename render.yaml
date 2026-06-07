@@ -17,7 +17,7 @@ services:
         generateValue: true
       - key: JWT_ALGORITHM
         value: HS256
-      - key: DEMO_OTP
+      - key: BREVO_API_KEY
         sync: false
       - key: SMTP_HOST
         sync: false
