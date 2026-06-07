@@ -105,7 +105,14 @@ def cleanup(db):
         db[collection].delete_many({"exam_id": EXAM_ID})
     db["blacklisted_tokens"].delete_many({"user_id": {"$in": USER_IDS}})
     db["users"].delete_many({
-        "username": {"$in": [AUTH_TEACHER_USERNAME, "regression_second_teacher"]}
+        "$or": [
+            {"username": {"$in": [AUTH_TEACHER_USERNAME, "regression_second_teacher"]}},
+            {"email": {"$in": [
+                "regression-auth-teacher@example.com",
+                "regression-second-teacher@example.com",
+                "regression_student_email@example.com",
+            ]}},
+        ]
     })
     db["logs"].delete_many({
         "$or": [
@@ -160,24 +167,52 @@ def main():
             5001,
             "/api/module01/register",
             {
-                "username": AUTH_TEACHER_USERNAME,
+                "email": "regression-auth-teacher@example.com",
                 "password": "Teacher123",
                 "role": "teacher",
             },
         )
-        expect(status == 409, "duplicate registration still returns HTTP 409")
+        expect(status == 403, "public teacher role escalation is blocked")
 
         status, _ = public_request(
             "POST",
             5001,
             "/api/module01/register",
             {
-                "username": "regression_second_teacher",
+                "email": "regression-second-teacher@example.com",
                 "password": "Teacher123",
                 "role": "teacher",
             },
         )
         expect(status == 403, "public teacher role escalation is blocked")
+
+        status, payload = public_request(
+            "POST",
+            5001,
+            "/api/module01/register",
+            {
+                "email": "regression_student_email@example.com",
+                "password": "Student123",
+                "role": "student",
+            },
+        )
+        expect(
+            status == 200
+            and response_data(payload).get("email") == "regression_student_email@example.com",
+            "student can register with email",
+        )
+
+        status, payload = public_request(
+            "POST",
+            5001,
+            "/api/module01/register",
+            {
+                "email": "regression_student_email@example.com",
+                "password": "Student123",
+                "role": "student",
+            },
+        )
+        expect(status == 409, "duplicate email registration returns HTTP 409")
 
         response = requests.post(
             (

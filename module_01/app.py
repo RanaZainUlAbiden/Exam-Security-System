@@ -8,9 +8,12 @@
 import sys
 import os
 import datetime
+import html
 import random
 import re
+import smtplib
 import string
+from email.message import EmailMessage
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -42,6 +45,66 @@ VALID_STATES = [
     "ANALYZING", "COMPLETED"
 ]
 
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def normalize_email(value: str) -> str:
+    return str(value or "").strip().lower()
+
+
+def email_otp_configured() -> bool:
+    return bool(os.getenv("SMTP_HOST") and os.getenv("SMTP_FROM_EMAIL"))
+
+
+def generate_otp() -> str:
+    demo_otp = os.getenv("DEMO_OTP", "").strip()
+    if demo_otp.isdigit() and len(demo_otp) == 6:
+        return demo_otp
+    return "".join(random.choices(string.digits, k=6))
+
+
+def send_otp_email(to_email: str, otp: str) -> bool:
+    """Send OTP using SMTP environment variables when configured."""
+    if not email_otp_configured():
+        return False
+
+    host = os.getenv("SMTP_HOST")
+    port = int(os.getenv("SMTP_PORT", "587"))
+    username = os.getenv("SMTP_USERNAME", "")
+    password = os.getenv("SMTP_PASSWORD", "")
+    from_email = os.getenv("SMTP_FROM_EMAIL")
+    use_tls = os.getenv("SMTP_USE_TLS", "true").lower() != "false"
+
+    msg = EmailMessage()
+    msg["Subject"] = "Secure Exam System OTP"
+    msg["From"] = from_email
+    msg["To"] = to_email
+    msg.set_content(
+        f"Your Secure Exam System OTP is {otp}. "
+        "It expires in 5 minutes. Do not share it with anyone."
+    )
+    escaped_otp = html.escape(otp)
+    msg.add_alternative(
+        f"""
+        <html>
+          <body>
+            <p>Your Secure Exam System OTP is:</p>
+            <h2>{escaped_otp}</h2>
+            <p>This code expires in 5 minutes. Do not share it with anyone.</p>
+          </body>
+        </html>
+        """,
+        subtype="html",
+    )
+
+    with smtplib.SMTP(host, port, timeout=10) as server:
+        if use_tls:
+            server.starttls()
+        if username and password:
+            server.login(username, password)
+        server.send_message(msg)
+    return True
+
 # =============================================
 # HEALTH CHECK
 # =============================================
@@ -63,18 +126,16 @@ def health():
 def register():
     data = request.get_json()
 
-    required = ["username", "password", "role"]
+    required = ["email", "password", "role"]
     for field in required:
         if not data or field not in data:
             return error_response(400, f"Missing field: {field}")
 
     if data["role"] not in ["student", "teacher"]:
         return error_response(400, "Role must be 'student' or 'teacher'")
-    if not re.fullmatch(r"[A-Za-z0-9_]{3,30}", str(data["username"])):
-        return error_response(
-            400,
-            "Username must be 3-30 characters using letters, numbers, or underscores"
-        )
+    email = normalize_email(data["email"])
+    if not EMAIL_RE.fullmatch(email):
+        return error_response(400, "Valid email address is required")
     password = str(data["password"])
     if (
         len(password) < 8
@@ -90,8 +151,8 @@ def register():
     users = db["users"]
 
     # Check duplicate before role provisioning so duplicate registration remains 409.
-    if users.find_one({"username": data["username"]}):
-        return error_response(409, "Username already exists")
+    if users.find_one({"email": email}):
+        return error_response(409, "Email already exists")
 
     if data["role"] == "teacher" and users.find_one({"role": "teacher"}):
         registration_code = os.getenv("TEACHER_REGISTRATION_CODE", "")
@@ -108,23 +169,63 @@ def register():
     hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
 
     user = {
-        "username":          data["username"],
+        "username":          email,
+        "email":             email,
         "password_hash":     hashed.decode("utf-8"),
         "role":              data["role"],
         "created_at":        datetime.datetime.utcnow().isoformat(),
         "is_active":         True,
+        "is_verified":       False,
         "device_fingerprint_hash": ""
     }
 
     result  = users.insert_one(user)
     user_id = str(result.inserted_id)
+    otp = generate_otp()
+    otp_store[user_id] = {
+        "otp": otp,
+        "purpose": "registration",
+        "expires_at": (
+            datetime.datetime.utcnow() + datetime.timedelta(minutes=5)
+        ).isoformat()
+    }
+
+    email_sent = False
+    if email_otp_configured():
+        try:
+            email_sent = send_otp_email(email, otp)
+        except Exception as exc:
+            otp_store.pop(user_id, None)
+            users.delete_one({"_id": result.inserted_id})
+            send_log(MODULE_NAME, "ERROR", user_id, "", "registration_otp_email_failed",
+                     {"email": email, "error": str(exc)})
+            return error_response(503, "Unable to send verification email. Please try again later.")
+
+    if not email_sent:
+        print(f"[DEV OTP] Registration email: {email} | OTP: {otp}")
 
     send_log(MODULE_NAME, "INFO", user_id, "", "user_registered",
-             {"username": data["username"], "role": data["role"]})
+             {"email": email, "role": data["role"], "verification_email_sent": email_sent})
 
     return success_response(
-        data    = {"user_id": user_id, "username": data["username"], "role": data["role"]},
-        message = "User registered successfully"
+        data = {
+            "user_id": user_id,
+            "email": email,
+            "username": email,
+            "role": data["role"],
+            "verification_required": True,
+            "email_sent": email_sent,
+            "message": (
+                "OTP sent to your registered email."
+                if email_sent
+                else "Use the configured demo OTP or server log OTP."
+            ),
+        },
+        message = (
+            "Registration successful. OTP sent to your email."
+            if email_sent
+            else "Registration successful. Use the configured demo OTP or server log OTP."
+        )
     )
 
 
@@ -136,16 +237,20 @@ def register():
 def login():
     data = request.get_json()
 
-    if not data or "username" not in data or "password" not in data:
-        return error_response(400, "Username and password required")
+    if not data or "password" not in data or ("email" not in data and "username" not in data):
+        return error_response(400, "Email and password required")
 
     db    = get_db()
     users = db["users"]
-    user  = users.find_one({"username": data["username"]})
+    login_identifier = normalize_email(data.get("email") or data.get("username"))
+    user = users.find_one({"email": login_identifier})
+    if not user:
+        # Backward compatibility for pre-email demo accounts such as demo_teacher.
+        user = users.find_one({"username": login_identifier})
 
     if not user:
         send_log(MODULE_NAME, "SECURITY", "", "", "login_failed_user_not_found",
-                 {"username": data["username"]})
+                 {"email": login_identifier})
         return error_response(401, "Invalid credentials")
 
     # Verify bcrypt password
@@ -156,30 +261,42 @@ def login():
 
     if not password_valid:
         send_log(MODULE_NAME, "SECURITY", str(user["_id"]), "", "login_failed_wrong_password",
-                 {"username": data["username"]})
+                 {"email": user.get("email", user.get("username", ""))})
         return error_response(401, "Invalid credentials")
 
     # Generate OTP for MFA
-    demo_otp = os.getenv("DEMO_OTP", "").strip()
-    otp = demo_otp if demo_otp.isdigit() and len(demo_otp) == 6 else \
-        "".join(random.choices(string.digits, k=6))
+    otp = generate_otp()
     otp_store[str(user["_id"])] = {
         "otp":        otp,
+        "purpose":    "login",
         "expires_at": (datetime.datetime.utcnow() + datetime.timedelta(minutes=5)).isoformat()
     }
 
+    target_email = user.get("email", "")
+    email_sent = False
+    if target_email and email_otp_configured():
+        try:
+            email_sent = send_otp_email(target_email, otp)
+        except Exception as exc:
+            del otp_store[str(user["_id"])]
+            send_log(MODULE_NAME, "ERROR", str(user["_id"]), "", "otp_email_failed",
+                     {"email": target_email, "error": str(exc)})
+            return error_response(503, "Unable to send OTP email. Please try again later.")
+
     send_log(MODULE_NAME, "INFO", str(user["_id"]), "", "login_otp_sent",
-             {"username": data["username"]})
+             {"email": target_email or user.get("username", ""), "email_sent": email_sent})
 
-    print(f"[DEV OTP] User: {data['username']} | OTP: {otp}")
+    if not email_sent:
+        print(f"[DEV OTP] User: {user.get('email', user.get('username'))} | OTP: {otp}")
 
-    # In real system: send OTP via email/SMS
     return success_response(
         data    = {
             "user_id":  str(user["_id"]),
-            "message":  "OTP sent. Use /verify-otp to get JWT token."
+            "email": target_email,
+            "email_sent": email_sent,
+            "message":  "OTP sent to registered email." if email_sent else "OTP generated. Check server logs or configured demo OTP."
         },
-        message = "OTP generated. Verify to complete login."
+        message = "OTP sent. Verify to complete login."
     )
 
 
@@ -222,6 +339,16 @@ def verify_otp():
     if not user:
         return error_response(404, "User not found")
 
+    if not user.get("is_verified", True):
+        db["users"].update_one(
+            {"_id": user["_id"]},
+            {"$set": {
+                "is_verified": True,
+                "verified_at": datetime.datetime.utcnow().isoformat() + "Z"
+            }}
+        )
+        user["is_verified"] = True
+
     # Generate session ID
     session_id = "".join(random.choices(string.ascii_letters + string.digits, k=32))
 
@@ -229,6 +356,7 @@ def verify_otp():
     payload = {
         "user_id":                 str(user["_id"]),
         "username":                user["username"],
+        "email":                   user.get("email", user.get("username", "")),
         "role":                    user["role"],
         "session_id":              session_id,
         "device_fingerprint_hash": user.get("device_fingerprint_hash", ""),
@@ -245,6 +373,7 @@ def verify_otp():
             "token":    token,
             "user_id":  str(user["_id"]),
             "username": user["username"],
+            "email":    user.get("email", user.get("username", "")),
             "role":     user["role"],
             "expires_in": "3 hours"
         },

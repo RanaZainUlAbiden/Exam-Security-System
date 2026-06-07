@@ -26,7 +26,10 @@ Teacher demo login:
 - Password: `DemoExam#2026`
 - Demo OTP: `692386`
 
-Students should create their own unique student accounts from the Register tab.
+Students should create their own unique student accounts from the Register tab
+using their email address. New sign-up and sign-in are email-based. The
+`demo_teacher` account is a legacy demo account, so it can still be entered as
+the login identifier until a teacher email account is provisioned.
 Teacher self-registration is intentionally disabled after the first teacher is
 provisioned, because allowing a visitor to choose the teacher role is a
 privilege-escalation vulnerability.
@@ -40,12 +43,15 @@ Content-Type: application/json
 
 ## Module 01: Secure Authentication
 
-1. Open the live app and register a student with a unique username.
-2. Log in with the username and password. Confirm the API response does not
+1. Open the live app and register a student with a unique email address.
+2. Confirm the app moves to the OTP screen after sign-up.
+3. Enter the OTP sent to the registered email. If the demo OTP is still enabled,
+   enter `692386`. Confirm the student dashboard opens.
+4. Log out, then log in again with the same email and password. Confirm the
+   login API response does not
    contain an `otp` field.
-3. Enter OTP `692386`. Confirm the student dashboard opens.
-4. Try a wrong password and wrong OTP. Both must return HTTP 401.
-5. Repeat the same registration. It must return HTTP 409.
+5. Try a wrong password and wrong OTP. Both must return HTTP 401.
+6. Repeat the same registration. It must return HTTP 409.
 
 API: `POST /api/module01/register`, `/login`, and `/verify-otp`.
 

@@ -19,6 +19,18 @@ services:
         value: HS256
       - key: DEMO_OTP
         sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        sync: false
+      - key: SMTP_USE_TLS
+        value: true
       - key: LOGGING_GATEWAY_URL
         value: http://127.0.0.1:10000/api/logs/write
       - key: MODULE_BASE_URL

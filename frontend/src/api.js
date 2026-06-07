@@ -51,14 +51,14 @@ async function fetchApi(url, options = {}) {
 }
 
 // ================= AUTH (Module 01) =================
-export const login = (username, password) => 
-  fetchApi(`${URLS.auth}/login`, { method: 'POST', body: JSON.stringify({ username, password }) });
+export const login = (email, password) =>
+  fetchApi(`${URLS.auth}/login`, { method: 'POST', body: JSON.stringify({ email, password }) });
 
 export const verifyOtp = (user_id, otp) => 
   fetchApi(`${URLS.auth}/verify-otp`, { method: 'POST', body: JSON.stringify({ user_id, otp }) });
 
-export const register = (username, password, role) => 
-  fetchApi(`${URLS.auth}/register`, { method: 'POST', body: JSON.stringify({ username, password, role }) });
+export const register = (email, password, role) =>
+  fetchApi(`${URLS.auth}/register`, { method: 'POST', body: JSON.stringify({ email, password, role }) });
 
 // ================= SESSION (Modules 02 & 14) =================
 export const invalidateSession = () =>

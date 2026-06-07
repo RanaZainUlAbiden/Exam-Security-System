@@ -8,9 +8,10 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [otpNotice, setOtpNotice] = useState('');
   
   // Form State
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
   const [userId, setUserId] = useState(null);
@@ -22,8 +23,9 @@ export default function Login() {
     setError('');
     setIsLoading(true);
     try {
-      const res = await login(username, password);
+      const res = await login(email, password);
       setUserId(res.data.user_id);
+      setOtpNotice(res.data.message || res.message || 'Enter your OTP to continue.');
       setStep(2);
     } catch (err) {
       setError(err.message);
@@ -38,11 +40,12 @@ export default function Login() {
     setIsLoading(true);
     try {
       const res = await verifyOtp(userId, otp);
-      const { token, role: userRole, username: resUsername, user_id } = res.data;
+      const { token, role: userRole, username: resUsername, email: resEmail, user_id } = res.data;
       
       localStorage.setItem('token', token);
       localStorage.setItem('role', userRole);
-      localStorage.setItem('username', resUsername);
+      localStorage.setItem('username', resEmail || resUsername);
+      localStorage.setItem('email', resEmail || resUsername);
       localStorage.setItem('user_id', user_id);
 
       // Register device automatically
@@ -69,10 +72,11 @@ export default function Login() {
     setSuccess('');
     setIsLoading(true);
     try {
-      await register(username, password, 'student');
-      setSuccess('Registration successful! You can now login.');
-      setActiveTab('login');
-      setStep(1);
+      const res = await register(email, password, 'student');
+      setUserId(res.data.user_id);
+      setOtpNotice(res.data.message || res.message || 'Enter your OTP to complete registration.');
+      setSuccess('Registration successful. Verify your OTP to continue.');
+      setStep(2);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -120,13 +124,13 @@ export default function Login() {
             {activeTab === 'login' ? (
               <form onSubmit={handleLoginSubmit}>
                 <div className="form-group">
-                  <label>Username</label>
+                  <label>Email</label>
                   <input 
                     type="text" 
-                    value={username} 
-                    onChange={e => setUsername(e.target.value)} 
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
                     required 
-                    placeholder="Enter username"
+                    placeholder="Enter email"
                   />
                 </div>
                 <div className="form-group">
@@ -149,13 +153,13 @@ export default function Login() {
                   Student self-registration only. Teacher accounts are created by an administrator.
                 </div>
                 <div className="form-group">
-                  <label>Username</label>
+                  <label>Email</label>
                   <input 
-                    type="text" 
-                    value={username} 
-                    onChange={e => setUsername(e.target.value)} 
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
                     required 
-                    placeholder="Choose a username"
+                    placeholder="Enter your email"
                   />
                 </div>
                 <div className="form-group">
@@ -177,7 +181,7 @@ export default function Login() {
         ) : (
           <form onSubmit={handleOtpSubmit}>
             <div className="alert alert-warning">
-              <span>💻</span> Check the server terminal for your OTP.
+              <span>📧</span> {otpNotice || 'Enter your OTP to continue.'}
             </div>
             <div className="form-group">
               <label>One-Time Password (OTP)</label>
