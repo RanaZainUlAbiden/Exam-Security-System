@@ -152,14 +152,35 @@ export default function Login() {
                 <div className="alert alert-warning">
                   Student self-registration only. Teacher accounts are created by an administrator.
                 </div>
-                <div className="form-group">
-                  <label>Email</label>
+                <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#4b5563' }}>Email Address</label>
                   <input 
                     type="email"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     required 
-                    placeholder="Enter your email"
+                    placeholder="Enter your email address"
+                    style={{
+                      width: '100%',
+                      padding: '0.875rem 1rem',
+                      borderRadius: '0.5rem',
+                      border: '1px solid #d1d5db',
+                      fontSize: '1rem',
+                      outline: 'none',
+                      transition: 'all 0.2s',
+                      boxSizing: 'border-box',
+                      backgroundColor: '#f9fafb'
+                    }}
+                    onFocus={(e) => {
+                      e.target.style.borderColor = '#3b82f6';
+                      e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.2)';
+                      e.target.style.backgroundColor = '#ffffff';
+                    }}
+                    onBlur={(e) => {
+                      e.target.style.borderColor = '#d1d5db';
+                      e.target.style.boxShadow = 'none';
+                      e.target.style.backgroundColor = '#f9fafb';
+                    }}
                   />
                 </div>
                 <div className="form-group">
