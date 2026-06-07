@@ -78,6 +78,35 @@ def format_time(seconds: int) -> str:
     return f"{minutes:02d}:{secs:02d}"
 
 
+def update_aggregate_exam_state(db, exam_id: str, now: datetime.datetime):
+    """Keep the shared exam state aligned with all per-student timers."""
+    timers = list(db["student_timers"].find(
+        {"exam_id": exam_id},
+        {"_id": 0, "submitted": 1}
+    ))
+    activations = list(db["exam_activations"].find(
+        {"exam_id": exam_id},
+        {"_id": 0, "state": 1}
+    ))
+
+    if activations and all(
+        activation.get("state") == "SUBMITTED"
+        for activation in activations
+    ):
+        state = "SUBMITTED"
+    elif not activations and timers and all(timer.get("submitted") for timer in timers):
+        state = "SUBMITTED"
+    elif timers:
+        state = "IN_PROGRESS"
+    else:
+        return
+
+    db["exams"].update_one(
+        {"exam_id": exam_id},
+        {"$set": {"state": state, "updated_at": now.isoformat() + "Z"}}
+    )
+
+
 # =============================================
 # HEALTH CHECK
 # =============================================
@@ -187,16 +216,6 @@ def start_timer():
         return error_response(404, "Exam not found")
 
     # Check exam state — must be ACTIVATION_VALID to start
-    valid_states = ["ACTIVATION_VALID", "IN_PROGRESS"]
-    if exam.get("state") not in valid_states:
-        send_log(MODULE_NAME, "SECURITY", student["user_id"], exam_id,
-                 "timer_start_wrong_state",
-                 {"current_state": exam.get("state")})
-        return error_response(409,
-            f"Cannot start exam. Current state: {exam.get('state')}. "
-            f"Required: ACTIVATION_VALID"
-        )
-
     # Check if student already started
     student_timer = db["student_timers"].find_one({
         "user_id": student["user_id"],
@@ -204,6 +223,9 @@ def start_timer():
     })
 
     if student_timer:
+        if student_timer.get("submitted"):
+            return error_response(409, "Exam already submitted")
+
         # Already started — return remaining time
         remaining = get_remaining_seconds(
             student_timer["start_time"],
@@ -226,6 +248,27 @@ def start_timer():
             message = "Timer already running"
         )
 
+    activation = db["exam_activations"].find_one({
+        "user_id": student["user_id"],
+        "exam_id": exam_id,
+        "state": "ACTIVATION_VALID"
+    })
+    activation_records_exist = db["exam_activations"].count_documents(
+        {"exam_id": exam_id},
+        limit=1
+    ) > 0
+    valid_states = ["ACTIVATION_VALID", "IN_PROGRESS"]
+    if not activation and (
+        activation_records_exist or exam.get("state") not in valid_states
+    ):
+        send_log(MODULE_NAME, "SECURITY", student["user_id"], exam_id,
+                 "timer_start_wrong_state",
+                 {"current_state": exam.get("state")})
+        return error_response(409,
+            f"Cannot start exam. Current state: {exam.get('state')}. "
+            f"Required: ACTIVATION_VALID"
+        )
+
     # Start fresh timer
     now      = datetime.datetime.utcnow()
     end_time = now + datetime.timedelta(minutes=exam["duration_minutes"])
@@ -242,6 +285,14 @@ def start_timer():
     }
 
     db["student_timers"].insert_one(timer_doc)
+
+    db["exam_activations"].update_one(
+        {"user_id": student["user_id"], "exam_id": exam_id},
+        {"$set": {
+            "state": "IN_PROGRESS",
+            "started_at": now.isoformat() + "Z"
+        }}
+    )
 
     # Update exam state to IN_PROGRESS
     db["exams"].update_one(
@@ -385,11 +436,6 @@ def submit_exam():
     if not exam:
         return error_response(404, "Exam not found")
 
-    # Check exam state
-    if exam.get("state") != "IN_PROGRESS":
-        return error_response(409,
-            f"Cannot submit. Exam state is: {exam.get('state')}"
-        )
 
     # Check time — reject late submission
     remaining = get_remaining_seconds(timer["start_time"], exam["duration_minutes"])
@@ -440,14 +486,21 @@ def submit_exam():
         }}
     )
 
-    # Update exam state to SUBMITTED
+    db["exam_activations"].update_one(
+        {"user_id": student["user_id"], "exam_id": exam_id},
+        {"$set": {
+            "state": "SUBMITTED",
+            "submitted_at": now.isoformat() + "Z"
+        }}
+    )
+
     db["exams"].update_one(
         {"exam_id": exam_id},
         {
-            "$set":  {"state": "SUBMITTED", "updated_at": now.isoformat() + "Z"},
-            "$push": {"submitted_by": student["user_id"]}
+            "$addToSet": {"submitted_by": student["user_id"]}
         }
     )
+    update_aggregate_exam_state(db, exam_id, now)
 
     send_log(MODULE_NAME, "INFO", student["user_id"], exam_id,
              "exam_submitted",
@@ -488,13 +541,21 @@ def _auto_submit(user_id: str, exam_id: str, db):
         }}
     )
 
+    db["exam_activations"].update_one(
+        {"user_id": user_id, "exam_id": exam_id},
+        {"$set": {
+            "state": "SUBMITTED",
+            "submitted_at": now.isoformat() + "Z"
+        }}
+    )
+
     db["exams"].update_one(
         {"exam_id": exam_id},
         {
-            "$set":  {"state": "SUBMITTED", "updated_at": now.isoformat() + "Z"},
-            "$push": {"submitted_by": user_id}
+            "$addToSet": {"submitted_by": user_id}
         }
     )
+    update_aggregate_exam_state(db, exam_id, now)
 
     send_log(MODULE_NAME, "WARNING", user_id, exam_id,
              "exam_auto_submitted_time_expired", {})

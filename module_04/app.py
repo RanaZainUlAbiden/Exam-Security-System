@@ -75,7 +75,7 @@ def validate_code():
     doc = db["activation_codes"].find_one({"code": code, "exam_id": exam_id})
     if not doc:
         send_log(MODULE_NAME, "WARNING", user_id, exam_id, "invalid_code_attempt", {"code": code})
-        return error_response(404, "Invalid activation code")
+        return error_response(401, "Invalid activation code")
         
     if doc["used"]:
         send_log(MODULE_NAME, "WARNING", user_id, exam_id, "used_code_attempt", {"code": code})
@@ -90,6 +90,17 @@ def validate_code():
         {"_id": doc["_id"]},
         {"$set": {"used": True, "used_by": user_id, "used_at": datetime.datetime.utcnow().isoformat() + "Z"}}
     )
+
+    db["exam_activations"].update_one(
+        {"user_id": user_id, "exam_id": exam_id},
+        {"$set": {
+            "user_id": user_id,
+            "exam_id": exam_id,
+            "state": "ACTIVATION_VALID",
+            "validated_at": datetime.datetime.utcnow().isoformat() + "Z"
+        }},
+        upsert=True
+    )
     
     db["exams"].update_one(
         {"exam_id": exam_id},
@@ -98,7 +109,10 @@ def validate_code():
     )
     
     send_log(MODULE_NAME, "INFO", user_id, exam_id, "activation_code_validated", {})
-    return success_response(data={"valid": True, "exam_id": exam_id}, message="Activation code validated successfully")
+    return success_response(
+        data={"valid": True, "exam_id": exam_id, "state": "ACTIVATION_VALID"},
+        message="Activation code validated successfully"
+    )
 
 @app.route("/api/module04/code-status/<code>", methods=["GET"])
 @jwt_required

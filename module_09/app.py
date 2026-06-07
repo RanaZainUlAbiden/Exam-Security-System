@@ -16,6 +16,7 @@ import os
 import re
 import unicodedata
 import html
+import json
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
@@ -176,9 +177,9 @@ def detect_attack(value: str):
         if match:
             # Determine attack type
             if pattern in MONGODB_INJECTION_PATTERNS:
-                attack_type = "mongodb_injection"
+                attack_type = "nosql_injection"
             else:
-                attack_type = "xss_injection"
+                attack_type = "xss"
             
             return True, {
                 "attack_type": attack_type,
@@ -212,6 +213,12 @@ def detect_attack(value: str):
                 }
 
     return False, None
+
+
+def detect_payload_attack(payload):
+    """Inspect scalar values and structured JSON operators."""
+    serialized = json.dumps(payload, ensure_ascii=True, sort_keys=True)
+    return detect_attack(serialized)
 
 
 # =============================================
@@ -284,8 +291,17 @@ def validate_input_endpoint():
     user = request.user_payload
     data = request.get_json(silent=True) or {}
 
-    field = data.get("field", "")
-    value = str(data.get("value", ""))
+    if "field" in data or "value" in data:
+        field = data.get("field", "")
+        raw_value = data.get("value", "")
+    elif "answer" in data:
+        field = "answer"
+        raw_value = data.get("answer", "")
+    else:
+        field = ""
+        raw_value = ""
+
+    value = str(raw_value)
     exam_id = data.get("exam_id", "")
 
     # Step 1: Check input length
@@ -296,7 +312,7 @@ def validate_input_endpoint():
         )
 
     # Step 2: Detect attacks
-    is_attack, attack_details = detect_attack(value)
+    is_attack, attack_details = detect_payload_attack(data)
 
     if is_attack:
         send_log(
@@ -315,7 +331,7 @@ def validate_input_endpoint():
         )
 
         return error_response(
-            message="Malicious input detected and blocked",
+            message=f"Malicious input detected: {attack_details['attack_type']}",
             error_code=400
         )
 
@@ -356,6 +372,7 @@ def validate_input_endpoint():
         data={
             "field": field,
             "is_valid": True,
+            "safe": True,
             "sanitized_value": clean_value,
             # "safe_query": safe_query
         },

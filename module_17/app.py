@@ -24,13 +24,13 @@ PORT = 5017
 
 # Module URLs for risk data
 RISK_MODULES = {
-    "tab_monitor":     "http://localhost:5010/api/module10/risk-data",
-    "clipboard":       "http://localhost:5011/api/module11/risk-data",
-    "activity":        "http://localhost:5012/api/module12/risk-data",
-    "multi_session":   "http://localhost:5014/api/module14/risk-data",
-    "behavioral":      "http://localhost:5015/api/module15/risk-data",
-    "similarity":      "http://localhost:5016/api/module16/risk-data",
-    "secure_timer":    "http://localhost:5008/api/module08/risk-data",
+    "tab_monitor":     "http://127.0.0.1:5010/api/module10/risk-data",
+    "clipboard":       "http://127.0.0.1:5011/api/module11/risk-data",
+    "activity":        "http://127.0.0.1:5012/api/module12/risk-data",
+    "multi_session":   "http://127.0.0.1:5014/api/module14/risk-data",
+    "behavioral":      "http://127.0.0.1:5015/api/module15/risk-data",
+    "similarity":      "http://127.0.0.1:5016/api/module16/risk-data",
+    "secure_timer":    "http://127.0.0.1:5008/api/module08/risk-data",
 }
 
 def normalize(value, max_val):
@@ -105,6 +105,37 @@ def compute_risk_score(metrics: dict) -> dict:
         }
     }
 
+
+def calculate_and_store_risk(db, user_id, exam_id, token):
+    metrics = {}
+    for name, url in RISK_MODULES.items():
+        data_list = fetch_metric(url, user_id, exam_id, token)
+        for item in data_list:
+            metrics[item.get("metric", name)] = item.get("value", 0)
+
+    result = compute_risk_score(metrics)
+    score_doc = {
+        "user_id": user_id,
+        "exam_id": exam_id,
+        "score": result["score"],
+        "level": result["level"],
+        "breakdown": result["breakdown"],
+        "metrics": metrics,
+        "computed_at": datetime.datetime.utcnow().isoformat() + "Z"
+    }
+
+    db["risk_scores"].update_one(
+        {"user_id": user_id, "exam_id": exam_id},
+        {"$set": score_doc},
+        upsert=True
+    )
+
+    if result["level"] == "HIGH":
+        send_log(MODULE_NAME, "SECURITY", user_id, exam_id,
+                 "high_risk_student", {"score": result["score"], "level": result["level"]})
+
+    return score_doc
+
 @app.route("/api/module17/health", methods=["GET"])
 def health():
     return {"module": MODULE_NAME, "status": "healthy", "dependencies": ["mongodb"], "version": "1.0.0"}, 200
@@ -115,37 +146,16 @@ def risk_score(user_id, exam_id):
     """Compute and return risk score for a student in an exam."""
     token   = request.headers.get("Authorization","").split(" ")[-1]
     db      = get_db()
-    metrics = {}
-
-    # Fetch from all modules
-    for name, url in RISK_MODULES.items():
-        data_list = fetch_metric(url, user_id, exam_id, token)
-        for item in data_list:
-            metrics[item.get("metric", name)] = item.get("value", 0)
-
-    result = compute_risk_score(metrics)
-
-    now = datetime.datetime.utcnow()
-    db["risk_scores"].update_one(
-        {"user_id": user_id, "exam_id": exam_id},
-        {"$set": {
-            "user_id":    user_id,
-            "exam_id":    exam_id,
-            "score":      result["score"],
-            "level":      result["level"],
-            "breakdown":  result["breakdown"],
-            "metrics":    metrics,
-            "computed_at": now.isoformat() + "Z"
-        }},
-        upsert=True
-    )
-
-    if result["level"] == "HIGH":
-        send_log(MODULE_NAME, "SECURITY", user_id, exam_id,
-                 "high_risk_student", {"score": result["score"], "level": result["level"]})
+    score_doc = calculate_and_store_risk(db, user_id, exam_id, token)
 
     return success_response(
-        data={"user_id": user_id, "exam_id": exam_id, **result},
+        data={
+            "user_id": user_id,
+            "exam_id": exam_id,
+            "score": score_doc["score"],
+            "level": score_doc["level"],
+            "breakdown": score_doc["breakdown"]
+        },
         message="Risk score computed"
     )
 
@@ -158,7 +168,14 @@ def dashboard_api():
     if not exam_id:
         return error_response(400, "exam_id required")
 
-    db     = get_db()
+    db = get_db()
+    token = request.headers.get("Authorization", "").split(" ")[-1]
+    participant_ids = set(db["student_timers"].distinct("user_id", {"exam_id": exam_id}))
+    participant_ids.update(db["responses"].distinct("user_id", {"exam_id": exam_id}))
+
+    for user_id in participant_ids:
+        calculate_and_store_risk(db, user_id, exam_id, token)
+
     scores = list(db["risk_scores"].find({"exam_id": exam_id}, {"_id": 0}).sort("score", -1))
 
     high   = [s for s in scores if s.get("level") == "HIGH"]

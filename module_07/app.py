@@ -3,6 +3,7 @@ import os
 import datetime
 import random
 import hashlib
+import itertools
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -64,10 +65,40 @@ def randomized_questions(exam_id):
         seed_string = f"{user['user_id']}_{exam_id}_randomize"
         seed = int(hashlib.md5(seed_string.encode()).hexdigest(), 16) % (2**32)
 
-        random.seed(seed)
+        rng = random.Random(seed)
         shuffled = questions.copy()
-        random.shuffle(shuffled)
+        rng.shuffle(shuffled)
         ordered = shuffled
+
+        existing_orders = {
+            tuple(doc.get("question_order", []))
+            for doc in db["question_orders"].find(
+                {"exam_id": exam_id},
+                {"_id": 0, "question_order": 1}
+            )
+        }
+        candidate_ids = tuple(q["question_id"] for q in ordered)
+
+        if candidate_ids in existing_orders and len(questions) > 1:
+            question_map = {q["question_id"]: q for q in questions}
+            base_ids = sorted(question_map)
+
+            if len(base_ids) <= 8:
+                available = (
+                    order for order in itertools.permutations(base_ids)
+                    if order not in existing_orders
+                )
+            else:
+                variants = []
+                for offset in range(len(base_ids)):
+                    variants.append(tuple(base_ids[offset:] + base_ids[:offset]))
+                reversed_ids = list(reversed(base_ids))
+                for offset in range(len(reversed_ids)):
+                    variants.append(tuple(reversed_ids[offset:] + reversed_ids[:offset]))
+                available = (order for order in variants if order not in existing_orders)
+
+            candidate_ids = next(available, candidate_ids)
+            ordered = [question_map[question_id] for question_id in candidate_ids]
 
         # Save the order
         db["question_orders"].insert_one({
