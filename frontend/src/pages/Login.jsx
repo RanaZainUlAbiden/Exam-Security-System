@@ -15,6 +15,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
   const [userId, setUserId] = useState(null);
+  const [registerRole, setRegisterRole] = useState('student');
 
   const navigate = useNavigate();
 
@@ -72,7 +73,7 @@ export default function Login() {
     setSuccess('');
     setIsLoading(true);
     try {
-      const res = await register(email, password, 'student');
+      const res = await register(email, password, registerRole);
       setUserId(res.data.user_id);
       setOtpNotice(res.data.message || res.message || 'Enter your OTP to complete registration.');
       setSuccess('Registration successful. Verify your OTP to continue.');
@@ -149,8 +150,25 @@ export default function Login() {
               </form>
             ) : (
               <form onSubmit={handleRegisterSubmit}>
-                <div className="alert alert-warning">
-                  Student self-registration only. Teacher accounts are created by an administrator.
+                <div className="form-group" style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#4b5563' }}>Role</label>
+                  <select 
+                    value={registerRole} 
+                    onChange={(e) => setRegisterRole(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.875rem 1rem',
+                      borderRadius: '0.5rem',
+                      border: '1px solid #d1d5db',
+                      fontSize: '1rem',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                      backgroundColor: '#f9fafb'
+                    }}
+                  >
+                    <option value="student">Student</option>
+                    <option value="teacher">Teacher</option>
+                  </select>
                 </div>
                 <div className="form-group" style={{ marginBottom: '1.5rem' }}>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', color: '#4b5563' }}>Email Address</label>
